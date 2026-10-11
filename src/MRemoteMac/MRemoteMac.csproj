@@ -11,8 +11,14 @@
     <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
     <AssemblyName>mRemoteMac</AssemblyName>
     <RootNamespace>MRemoteMac</RootNamespace>
-    <Version>0.2.0</Version>
     <LangVersion>latest</LangVersion>
+    <MinVerTagPrefix>v</MinVerTagPrefix>
+    <MinVerDefaultPreReleaseIdentifiers>preview.0</MinVerDefaultPreReleaseIdentifiers>
+    <Company>PollySec Labs AB</Company>
+    <Authors>PollySec Labs AB</Authors>
+    <Product>mRemoteMac</Product>
+    <Copyright>© PollySec Labs AB. GPL-2.0.</Copyright>
+    <RepositoryUrl>https://github.com/PollySec/mremotemac</RepositoryUrl>
     <AnalysisLevel>latest-recommended</AnalysisLevel>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
@@ -33,6 +39,10 @@
     <PackageReference Include="Avalonia.Diagnostics" Version="11.3.22" Condition="'$(Configuration)' == 'Debug'" />
     <PackageReference Include="BouncyCastle.Cryptography" Version="2.7.0" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <PackageReference Include="MinVer" PrivateAssets="all" Version="8.0.0">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
   </ItemGroup>
 
   <ItemGroup>

@@ -1,6 +1,6 @@
 # mRemoteMac – instructions for Claude
 
-- **Identity:** this project belongs to **PollySec Labs AB**. Author/committer for git is `Anders <anders@pollysec.com>`.
+- **Identity:** this project belongs to **PollySec Labs AB**. Author/committer for git is `Anders Persson <anders@pollysec.com>`.
   Never use "Jobbs AB" or `anders@jobbs.se` anywhere (commits, docs, metadata, test data, screenshots).
 - GitHub home: `PollySec/mremotemac` (public). Bundle id `com.pollysec.mremotemac`.
 - Build: `./native/build-deps.sh` (once), `./native/build.sh`, `dotnet build src/MRemoteMac`; tests `dotnet test tests/MRemoteMac.Tests`.

@@ -1,34 +1,53 @@
 #!/bin/zsh
-# Builds a self-contained arm64 mRemoteMac.app in ./dist
+# Builds a self-contained arm64 mRemoteMac.app (plus .zip and .dmg) in ./dist
 set -e
 ROOT=${0:A:h:h}
 DIST=$ROOT/dist
 APP=$DIST/mRemoteMac.app
 CONF=${1:-Release}
+PROJ=$ROOT/src/MRemoteMac/MRemoteMac.csproj
 
 echo "==> native shim"
 $ROOT/native/build.sh >/dev/null
 
+VERSION=$(dotnet msbuild $PROJ -t:MinVer -getProperty:MinVerVersion -p:Configuration=$CONF 2>/dev/null | tail -1)
+BUILD=$(git -C $ROOT rev-list --count HEAD)
+echo "==> version $VERSION (build $BUILD)"
+
 echo "==> dotnet publish ($CONF)"
-dotnet publish $ROOT/src/MRemoteMac/MRemoteMac.csproj -c $CONF -r osx-arm64 --self-contained true \
-  -p:PublishSingleFile=false -p:DebugType=none -o $DIST/publish >/dev/null
+dotnet publish $PROJ -c $CONF -r osx-arm64 --self-contained true \
+  -p:PublishReadyToRun=true -p:PublishSingleFile=false -p:DebugType=none -o $DIST/publish >/dev/null
 
 echo "==> bundle"
 rm -rf $APP
 mkdir -p $APP/Contents/MacOS $APP/Contents/Resources
 cp -R $DIST/publish/. $APP/Contents/MacOS/
-cp $ROOT/packaging/Info.plist $APP/Contents/Info.plist
+sed -e "s/__VERSION__/${VERSION%%[+-]*}/; s/__BUILD__/$BUILD/" $ROOT/packaging/Info.plist > $APP/Contents/Info.plist
 
-# icon: build .icns from the mRemoteNG icon
+# icon: .icns from the 1024px app icon
 ICONSET=$DIST/icon.iconset
 rm -rf $ICONSET; mkdir -p $ICONSET
-SRC=$ROOT/src/MRemoteMac/Assets/Images/mRemoteNG_Icon.png
+SRC=$ROOT/src/MRemoteMac/Assets/AppIcon.png
 for s in 16 32 128 256 512; do
   sips -z $s $s $SRC --out $ICONSET/icon_${s}x${s}.png >/dev/null
   d=$((s*2)); sips -z $d $d $SRC --out $ICONSET/icon_${s}x${s}@2x.png >/dev/null
 done
-iconutil -c icns $ICONSET -o $APP/Contents/Resources/mRemoteMac.icns 2>/dev/null || echo "(iconutil failed, no icon)"
+iconutil -c icns $ICONSET -o $APP/Contents/Resources/mRemoteMac.icns
 
-echo "==> codesign (ad hoc)"
-codesign --force --deep --sign - $APP >/dev/null 2>&1 || true
-echo "Done: $APP"
+echo "==> codesign"
+if [ -n "$CODESIGN_IDENTITY" ]; then
+  codesign --force --deep --options runtime --timestamp --sign "$CODESIGN_IDENTITY" $APP
+else
+  codesign --force --deep --sign - $APP
+fi
+
+echo "==> archives"
+cd $DIST
+rm -f mRemoteMac-$VERSION-macos-arm64.zip mRemoteMac-$VERSION-macos-arm64.dmg
+ditto -c -k --keepParent mRemoteMac.app mRemoteMac-$VERSION-macos-arm64.zip
+STAGE=$DIST/dmg-stage; rm -rf $STAGE; mkdir -p $STAGE
+cp -R mRemoteMac.app $STAGE/
+ln -s /Applications $STAGE/Applications
+hdiutil create -quiet -volname "mRemoteMac $VERSION" -srcfolder $STAGE -ov -format UDZO mRemoteMac-$VERSION-macos-arm64.dmg
+rm -rf $STAGE $ICONSET
+echo "Done:"; ls -la $DIST/*.zip $DIST/*.dmg

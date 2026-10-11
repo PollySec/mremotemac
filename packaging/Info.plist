@@ -5,8 +5,8 @@
     <key>CFBundleName</key><string>mRemoteMac</string>
     <key>CFBundleDisplayName</key><string>mRemoteMac</string>
     <key>CFBundleIdentifier</key><string>com.pollysec.mremotemac</string>
-    <key>CFBundleVersion</key><string>0.1.0</string>
-    <key>CFBundleShortVersionString</key><string>0.1.0</string>
+    <key>CFBundleVersion</key><string>__BUILD__</string>
+    <key>CFBundleShortVersionString</key><string>__VERSION__</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleExecutable</key><string>mRemoteMac</string>
     <key>CFBundleIconFile</key><string>mRemoteMac.icns</string>
@@ -14,5 +14,14 @@
     <key>NSHighResolutionCapable</key><true/>
     <key>NSMicrophoneUsageDescription</key><string>Needed to redirect the microphone into RDP sessions.</string>
     <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
+    <key>NSHumanReadableCopyright</key><string>© PollySec Labs AB. Licensed under GPL-2.0.</string>
+    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeName</key><string>mRemoteNG connection file</string>
+            <key>CFBundleTypeExtensions</key><array><string>xml</string></array>
+            <key>CFBundleTypeRole</key><string>Editor</string>
+        </dict>
+    </array>
 </dict>
 </plist>
