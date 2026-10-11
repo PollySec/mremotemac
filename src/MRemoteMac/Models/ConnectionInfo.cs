@@ -36,7 +36,8 @@ public partial class ConnectionInfo : ObservableObject
     [ObservableProperty] private string _domain = "";
 
     // ----- Protocol -----
-    [property: Category("Protocol"), DisplayName("Protocol")]
+    [property: Category("Protocol"), DisplayName("Protocol"),
+     Description("mRemoteMac supports RDP only. Other protocols are kept for compatibility with mRemoteNG files but cannot be opened.")]
     [ObservableProperty] private ProtocolType _protocol = ProtocolType.RDP;
     [property: Category("Protocol"), DisplayName("RDP Version")]
     [ObservableProperty] private RdpVersion _rdpVersion = RdpVersion.Highest;
@@ -169,6 +170,17 @@ public partial class ConnectionInfo : ObservableObject
 
     [Browsable(false)] public virtual TreeNodeType NodeType => TreeNodeType.Connection;
     [Browsable(false)] public virtual bool IsContainer => false;
+
+    /// <summary>True for folders and RDP connections; false for protocols mRemoteMac cannot open.</summary>
+    [Browsable(false)] public bool IsSupported => IsContainer || Protocol == ProtocolType.RDP;
+    /// <summary>Tooltip for unsupported nodes in the tree; null when supported.</summary>
+    [Browsable(false)] public string? UnsupportedHint => IsSupported ? null : $"{Protocol} is not supported – mRemoteMac is RDP only";
+
+    partial void OnProtocolChanged(ProtocolType value)
+    {
+        OnPropertyChanged(nameof(IsSupported));
+        OnPropertyChanged(nameof(UnsupportedHint));
+    }
 
     /// <summary>mRemoteNG rule: nodes directly under the root never inherit.</summary>
     [Browsable(false)]

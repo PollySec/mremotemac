@@ -522,8 +522,9 @@ public sealed partial class MainWindow : Window
         var isRoot = n is RootNodeInfo;
         var isFolder = n is ContainerInfo && !isRoot;
         var isConn = n is not null && !n.IsContainer;
-        MiConnect.IsEnabled = isConn || isFolder;
-        MiConnectOptions.IsEnabled = isConn;
+        var canOpen = isConn && n!.IsSupported;
+        MiConnect.IsEnabled = canOpen || isFolder;
+        MiConnectOptions.IsEnabled = canOpen;
         MiDisconnect.IsEnabled = n is not null && (n.OpenConnections > 0 || isFolder);
         MiDuplicate.IsEnabled = !isRoot && n is not null;
         MiRename.IsEnabled = n is not null;
@@ -693,6 +694,7 @@ public sealed partial class MainWindow : Window
             foreach (var child in c.Children) item.Items.Add(BuildNodeMenu(child));
             if (item.Items.Count == 0) item.Items.Add(new MenuItem { Header = "(empty)", IsEnabled = false });
         }
+        else if (!n.IsSupported) { item.IsEnabled = false; ToolTip.SetTip(item, n.UnsupportedHint); }
         else item.Click += (_, _) => AsyncHelper.Fire(() => OpenConnectionAsync(n), $"Connect {n.Name}");
         return item;
     }

@@ -160,10 +160,14 @@
                                     <Style Selector="TreeViewItem">
                                         <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
                                     </Style>
+                                    <Style Selector="StackPanel.unsupported">
+                                        <Setter Property="Opacity" Value="0.45" />
+                                    </Style>
                                 </TreeView.Styles>
                                 <TreeView.ItemTemplate>
                                     <TreeDataTemplate ItemsSource="{Binding Children}">
-                                        <StackPanel Orientation="Horizontal" Height="22" Background="Transparent" Spacing="7">
+                                        <StackPanel Orientation="Horizontal" Height="22" Background="Transparent" Spacing="7"
+                                                    Classes.unsupported="{Binding !IsSupported}" ToolTip.Tip="{Binding UnsupportedHint}">
                                             <Panel Width="16" Height="16" VerticalAlignment="Center">
                                                 <c:Icon Glyph="{Binding ., Converter={StaticResource NodeIcon}}" Size="16" />
                                                 <Ellipse Width="7" Height="7" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,-2,-2"

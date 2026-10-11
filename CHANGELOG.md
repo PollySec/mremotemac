@@ -3,6 +3,12 @@
 All notable changes to mRemoteMac are documented here. The format follows [Keep a Changelog](https://keepachangelog.com)
 and versions follow [Semantic Versioning](https://semver.org) via git tags (MinVer).
 
+## [Unreleased]
+
+### Changed
+- The Protocol field offers RDP only. Connections imported with another protocol (SSH, VNC, …) stay in the file,
+  but they are dimmed in the tree with an explanatory tooltip and their Connect commands are disabled.
+
 ## [1.0.0] – 2026-10-11
 
 First public release.

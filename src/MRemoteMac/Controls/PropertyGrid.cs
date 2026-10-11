@@ -58,7 +58,17 @@ public sealed partial class PropertyRow : GridRow
     public bool IsIcon => !IsInheritanceRow && Property.Name == nameof(ConnectionInfo.Icon);
     public bool IsText => !IsEnum && !IsBool && !IsInt && !IsIcon;
 
-    public IEnumerable<object> EnumValues => IsEnum ? Enum.GetValues(EditorType).Cast<object>() : Array.Empty<object>();
+    public IEnumerable<object> EnumValues
+    {
+        get
+        {
+            if (!IsEnum) return Array.Empty<object>();
+            // Only RDP can be opened; keep the current value selectable so imported nodes still display their protocol.
+            if (!IsInheritanceRow && Property.Name == nameof(ConnectionInfo.Protocol))
+                return Value is ProtocolType cur && cur != ProtocolType.RDP ? [ProtocolType.RDP, cur] : [ProtocolType.RDP];
+            return Enum.GetValues(EditorType).Cast<object>();
+        }
+    }
     public static IEnumerable<string> BoolValues { get; } = new[] { "True", "False" };
     public static IReadOnlyList<string> IconValues => IconNames.Selectable;
 
