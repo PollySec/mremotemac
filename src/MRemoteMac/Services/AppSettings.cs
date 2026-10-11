@@ -24,6 +24,7 @@ public sealed class AppSettings
     public bool AutoSaveOnChange { get; set; } = true;
     public bool CloseTabOnDisconnect { get; set; } = true;
     public bool UseGfx { get; set; } = true;
+    public bool StaticWhileConnecting { get; set; } = true;
     public string QuickConnectProtocol { get; set; } = "RDP";
     public List<string> QuickConnectHistory { get; set; } = new();
     public double TreePaneWidth { get; set; } = 300;

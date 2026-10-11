@@ -171,15 +171,26 @@ public partial class ConnectionInfo : ObservableObject
     [Browsable(false)] public virtual TreeNodeType NodeType => TreeNodeType.Connection;
     [Browsable(false)] public virtual bool IsContainer => false;
 
+    /// <summary>Protocol after inheritance, i.e. the one a connection would actually be opened with.</summary>
+    [Browsable(false)] public ProtocolType EffectiveProtocol => GetEffective<ProtocolType>(nameof(Protocol));
     /// <summary>True for folders and RDP connections; false for protocols mRemoteMac cannot open.</summary>
-    [Browsable(false)] public bool IsSupported => IsContainer || Protocol == ProtocolType.RDP;
+    [Browsable(false)] public bool IsSupported => IsContainer || EffectiveProtocol == ProtocolType.RDP;
     /// <summary>Tooltip for unsupported nodes in the tree; null when supported.</summary>
-    [Browsable(false)] public string? UnsupportedHint => IsSupported ? null : $"{Protocol} is not supported – mRemoteMac is RDP only";
+    [Browsable(false)] public string? UnsupportedHint => IsSupported ? null : $"{EffectiveProtocol} is not supported – mRemoteMac is RDP only";
 
-    partial void OnProtocolChanged(ProtocolType value)
+    partial void OnProtocolChanged(ProtocolType value) => NotifySupportChanged();
+
+    /// <summary>
+    /// Re-evaluates <see cref="IsSupported"/> for this node and everything below it. Called when the protocol or its
+    /// inheritance changes, or when the node is moved, because the effective protocol depends on the ancestors.
+    /// </summary>
+    public void NotifySupportChanged()
     {
+        OnPropertyChanged(nameof(EffectiveProtocol));
         OnPropertyChanged(nameof(IsSupported));
         OnPropertyChanged(nameof(UnsupportedHint));
+        if (this is ContainerInfo c)
+            foreach (var d in c.Descendants()) d.NotifySupportChanged();
     }
 
     /// <summary>mRemoteNG rule: nodes directly under the root never inherit.</summary>
@@ -271,6 +282,7 @@ public partial class ContainerInfo : ConnectionInfo
         child.Parent?.Children.Remove(child);
         child.Parent = this;
         if (index < 0 || index >= Children.Count) Children.Add(child); else Children.Insert(index, child);
+        child.NotifySupportChanged(); // the effective protocol depends on the new ancestors
     }
 
     public void RemoveChild(ConnectionInfo child)

@@ -41,4 +41,24 @@ public class ProtocolTests
 
     [Fact]
     public void FoldersAreAlwaysSupported() => Assert.True(new ContainerInfo().IsSupported);
+
+    [Fact]
+    public void InheritedProtocolDecidesSupport()
+    {
+        // mRemoteNG rule: inheritance is active only below the second level
+        var root = new RootNodeInfo();
+        var top = new ContainerInfo { Name = "Top" }; root.AddChild(top);
+        var folder = new ContainerInfo { Name = "Folder", Protocol = ProtocolType.VNC }; top.AddChild(folder);
+        var c = new ConnectionInfo { Protocol = ProtocolType.RDP }; folder.AddChild(c);
+        c.Inheritance.Add(nameof(ConnectionInfo.Protocol));
+        Assert.Equal(ProtocolType.VNC, c.EffectiveProtocol);
+        Assert.False(c.IsSupported);
+        Assert.Contains("VNC", c.UnsupportedHint);
+
+        var raised = new List<string?>();
+        c.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+        folder.Protocol = ProtocolType.RDP; // propagates to descendants
+        Assert.Contains(nameof(ConnectionInfo.IsSupported), raised);
+        Assert.True(c.IsSupported);
+    }
 }

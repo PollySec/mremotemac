@@ -66,6 +66,7 @@ public sealed partial class MainWindow : Window
         {
             _vm.MarkDirty();
             if (prop is nameof(ConnectionInfo.Icon) or nameof(ConnectionInfo.Name)) UpdateConfigHeader();
+            if (prop == nameof(ConnectionInfo.Protocol)) Selected?.NotifySupportChanged(); // covers inheritance toggles and folders
             ScheduleAutoSave();
         };
         Notifications.Instance.MessageAdded += m =>
@@ -670,8 +671,7 @@ public sealed partial class MainWindow : Window
         foreach (var f in _vm.Favorites())
         {
             var item = new MenuItem { Header = f.Name, Icon = new Controls.Icon { Glyph = IconNames.ForNode(f) } };
-            var target = f;
-            item.Click += (_, _) => AsyncHelper.Fire(() => OpenConnectionAsync(target), $"Connect {target.Name}");
+            ConfigureConnectItem(item, f);
             menu.Items.Add(item);
         }
         if (menu.Items.Count == 0) menu.Items.Add(new MenuItem { Header = "(no favorites — set Favorite = True on a connection)", IsEnabled = false });
@@ -686,6 +686,18 @@ public sealed partial class MainWindow : Window
         menu.ShowAt(ConnectionsMenuButton);
     }
 
+    /// <summary>Wires a flyout entry to open <paramref name="n"/>, or disables it with the reason when the protocol is unsupported.</summary>
+    private void ConfigureConnectItem(MenuItem item, ConnectionInfo n)
+    {
+        if (n.IsSupported) item.Click += (_, _) => AsyncHelper.Fire(() => OpenConnectionAsync(n), $"Connect {n.Name}");
+        else
+        {
+            item.IsEnabled = false;
+            ToolTip.SetTip(item, n.UnsupportedHint);
+            ToolTip.SetShowOnDisabled(item, true);
+        }
+    }
+
     private MenuItem BuildNodeMenu(ConnectionInfo n)
     {
         var item = new MenuItem { Header = n.Name, Icon = new Controls.Icon { Glyph = IconNames.ForNode(n) } };
@@ -694,8 +706,7 @@ public sealed partial class MainWindow : Window
             foreach (var child in c.Children) item.Items.Add(BuildNodeMenu(child));
             if (item.Items.Count == 0) item.Items.Add(new MenuItem { Header = "(empty)", IsEnabled = false });
         }
-        else if (!n.IsSupported) { item.IsEnabled = false; ToolTip.SetTip(item, n.UnsupportedHint); }
-        else item.Click += (_, _) => AsyncHelper.Fire(() => OpenConnectionAsync(n), $"Connect {n.Name}");
+        else ConfigureConnectItem(item, n);
         return item;
     }
 
@@ -752,9 +763,9 @@ public sealed partial class MainWindow : Window
 
     private async Task OpenConnectionAsync(ConnectionInfo info, bool console = false, bool fullscreen = false, bool noCredentials = false, bool viewOnly = false)
     {
-        if (info.Protocol != ProtocolType.RDP)
+        if (!info.IsSupported)
         {
-            Notifications.Instance.Warn($"{info.Name}: protocol {info.Protocol} is not supported by mRemoteMac (RDP only).");
+            Notifications.Instance.Warn($"{info.Name}: {info.UnsupportedHint}.");
             return;
         }
         if (string.IsNullOrWhiteSpace(info.GetEffective<string>(nameof(ConnectionInfo.Hostname))))

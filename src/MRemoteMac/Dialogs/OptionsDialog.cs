@@ -24,6 +24,7 @@ public static class OptionsDialog
         var closeTab = new CheckBox { Content = "Close tab when the remote session ends cleanly", IsChecked = s.CloseTabOnDisconnect };
         var gfx = new CheckBox { Content = "Use RDP graphics pipeline (RemoteFX / progressive codec)", IsChecked = s.UseGfx };
         var dark = new CheckBox { Content = "Dark appearance", IsChecked = s.DarkTheme };
+        var noise = new CheckBox { Content = "Show analogue TV static while a session connects", IsChecked = s.StaticWhileConnecting };
 
         var body = new StackPanel { Spacing = 8, Width = 460 };
         body.Children.Add(Heading("Keyboard"));
@@ -37,6 +38,7 @@ public static class OptionsDialog
         body.Children.Add(gfx);
         body.Children.Add(Heading("Appearance"));
         body.Children.Add(dark);
+        body.Children.Add(noise);
         var where = new TextBlock { Text = $"Settings and the default connection file live in:\n{AppSettings.Directory}", TextWrapping = Avalonia.Media.TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0) };
         where.Classes.Add("caption");
         body.Children.Add(where);
@@ -61,6 +63,7 @@ public static class OptionsDialog
             s.CloseTabOnDisconnect = closeTab.IsChecked == true;
             s.UseGfx = gfx.IsChecked == true;
             s.DarkTheme = dark.IsChecked == true;
+            s.StaticWhileConnecting = noise.IsChecked == true;
             saved = true;
             w.Close();
         };

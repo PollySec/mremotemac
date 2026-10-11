@@ -8,6 +8,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using MRemoteMac.Converters;
 using MRemoteMac.Models;
@@ -308,7 +309,14 @@ public sealed class PropertyGrid : UserControl
         {
             var cb = new ComboBox { ItemsSource = p.EnumValues.ToList(), SelectedItem = p.Value, IsEnabled = !p.IsReadOnly };
             cb.Classes.Add("grid");
-            cb.SelectionChanged += (_, _) => { if (cb.SelectedItem is not null && !Equals(cb.SelectedItem, p.Value)) p.Value = cb.SelectedItem; };
+            cb.SelectionChanged += (_, _) =>
+            {
+                if (cb.SelectedItem is null || Equals(cb.SelectedItem, p.Value)) return;
+                p.Value = cb.SelectedItem;
+                // the Protocol list depends on the current value (RDP + the imported one): rebuild it after the change
+                if (p.Property.Name == nameof(ConnectionInfo.Protocol))
+                    Dispatcher.UIThread.Post(() => { cb.ItemsSource = p.EnumValues.ToList(); cb.SelectedItem = p.Value; });
+            };
             return cb;
         }
         if (p.IsIcon)

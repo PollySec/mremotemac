@@ -5,6 +5,10 @@ and versions follow [Semantic Versioning](https://semver.org) via git tags (MinV
 
 ## [Unreleased]
 
+### Added
+- Analogue TV static behind the "Connecting…" overlay while a session is being established (Options ▸ Appearance
+  to turn it off). Rendered into a small bitmap at 25 fps only while visible, so idle tabs cost nothing.
+
 ### Changed
 - The Protocol field offers RDP only. Connections imported with another protocol (SSH, VNC, …) stay in the file,
   but they are dimmed in the tree with an explanatory tooltip and their Connect commands are disabled.

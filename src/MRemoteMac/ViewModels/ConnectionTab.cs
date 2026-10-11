@@ -28,6 +28,7 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
     private readonly Window _owner;
     private readonly TextBlock _overlayText;
     private readonly Border _overlay;
+    private readonly Controls.StaticNoiseView _noise = new() { IsVisible = false };
     private readonly Button _reconnectButton;
     private string? _lastLocalClipboard;
     private int _generation; // guards late events from a replaced session
@@ -65,14 +66,14 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
         _reconnectButton.Click += (_, _) => AsyncHelper.Fire(ConnectAsync, $"Reconnect {Info.Name}");
         _overlay = new Border
         {
-            Background = new SolidColorBrush(Color.FromArgb(0xE6, 0x10, 0x14, 0x18)),
+            Background = OverlayBrush(TabState.Idle),
             Child = new StackPanel
             {
                 VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center,
                 Children = { _overlayText, _reconnectButton }
             }
         };
-        Content = new Panel { Children = { View, _overlay } };
+        Content = new Panel { Children = { View, _noise, _overlay } };
         View.GotFocus += (_, _) => AsyncHelper.Fire(PushLocalClipboardAsync, "Clipboard");
     }
 
@@ -86,12 +87,19 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
         return ViewScaleMode.SmartSize;
     }
 
+    // While connecting the TV static shows through a lighter scrim; otherwise the overlay is nearly opaque.
+    private static readonly IBrush ConnectingScrim = new SolidColorBrush(Color.FromArgb(0x8C, 0x10, 0x14, 0x18));
+    private static readonly IBrush SolidScrim = new SolidColorBrush(Color.FromArgb(0xE6, 0x10, 0x14, 0x18));
+    private static IBrush OverlayBrush(TabState state) => state == TabState.Connecting ? ConnectingScrim : SolidScrim;
+
     private void SetState(TabState state, string text)
     {
         State = state;
         StatusText = text;
         _overlayText.Text = text;
         _overlay.IsVisible = state != TabState.Connected;
+        _noise.IsVisible = state == TabState.Connecting && _settings.StaticWhileConnecting;
+        _overlay.Background = OverlayBrush(_noise.IsVisible ? TabState.Connecting : TabState.Idle);
         _reconnectButton.IsVisible = state is TabState.Disconnected or TabState.Failed;
         StateChanged?.Invoke(this);
     }
@@ -223,6 +231,7 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await DisposeSessionAsync().ConfigureAwait(true);
+        _noise.Dispose();
         View.DisposeBitmap();
     }
 }

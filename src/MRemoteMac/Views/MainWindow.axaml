@@ -160,7 +160,7 @@
                                     <Style Selector="TreeViewItem">
                                         <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
                                     </Style>
-                                    <Style Selector="StackPanel.unsupported">
+                                    <Style Selector="StackPanel.unsupported c|Icon, StackPanel.unsupported TextBlock">
                                         <Setter Property="Opacity" Value="0.45" />
                                     </Style>
                                 </TreeView.Styles>
