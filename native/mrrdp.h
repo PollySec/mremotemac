@@ -16,6 +16,8 @@ typedef struct mr_session mr_session;
 
 /* Dirty rectangle in the framebuffer has been updated. */
 typedef void (*mr_on_frame)(void* user, int32_t x, int32_t y, int32_t w, int32_t h);
+/* All dirty rectangles of one paint batch have been delivered; show the frame. */
+typedef void (*mr_on_present)(void* user);
 /* Framebuffer has been (re)allocated to a new size. */
 typedef void (*mr_on_resize)(void* user, int32_t w, int32_t h);
 typedef void (*mr_on_connected)(void* user);
@@ -44,6 +46,7 @@ typedef void (*mr_on_clipboard_text)(void* user, const char* utf8);
 typedef struct {
 	void* user;
 	mr_on_frame on_frame;
+	mr_on_present on_present;
 	mr_on_resize on_resize;
 	mr_on_connected on_connected;
 	mr_on_disconnected on_disconnected;

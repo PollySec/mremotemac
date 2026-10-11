@@ -117,6 +117,7 @@ public sealed class AeadCryptographyProvider : ICryptographyProvider
 }
 
 /// <summary>mRemoteNG legacy provider (ConfVersion &lt; 2.6): AES-128-CBC, key = MD5(UTF8(password)), base64(IV || ct).</summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA5351:Do Not Use Broken Cryptographic Algorithms", Justification = "Required for byte compatibility with mRemoteNG files older than 2.6; never used for new files.")]
 public sealed class LegacyRijndaelCryptographyProvider : ICryptographyProvider
 {
     public string Encrypt(string plainText, string password)

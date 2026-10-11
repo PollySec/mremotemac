@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
+using Avalonia.Input.Platform;
 using Avalonia.Media;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -134,10 +135,11 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
         {
             if (generation != _generation) return;
             if (State == TabState.Connected && Info.OpenConnections > 0) Info.OpenConnections--;
-            if (err == 0)
+            if (RdpSession.IsCleanDisconnect(err, session.LastErrorName))
             {
-                SetState(TabState.Disconnected, $"Disconnected from {Info.Name}.");
-                Notifications.Instance.Info($"Disconnected from {Info.Name}");
+                var reason = err == 0 ? "" : $" ({text})";
+                SetState(TabState.Disconnected, $"Disconnected from {Info.Name}.{reason}");
+                Notifications.Instance.Info($"Disconnected from {Info.Name}{reason}");
                 if (_settings.CloseTabOnDisconnect) CloseRequested?.Invoke(this);
             }
             else
@@ -186,7 +188,7 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
         if (Session is not { IsConnected: true } || !Info.GetEffective<bool>(nameof(ConnectionInfo.RedirectClipboard))) return;
         var clip = TopLevel.GetTopLevel(View)?.Clipboard;
         if (clip is null) return;
-        var text = await clip.GetTextAsync().ConfigureAwait(true);
+        var text = await clip.TryGetTextAsync().ConfigureAwait(true);
         if (!string.IsNullOrEmpty(text) && text != _lastLocalClipboard)
         {
             _lastLocalClipboard = text;

@@ -22,7 +22,7 @@ namespace MRemoteMac.Services;
 /// Script-driven UI automation used for audits (MRM_SCRIPT=file MRM_OUT=dir). Injects raw pointer/keyboard
 /// events through Avalonia's InputManager so real hit-testing, focus and gestures are exercised.
 /// </summary>
-public sealed class UiTestRunner
+public sealed class UiTestRunner : IDisposable
 {
     private readonly MainWindow _main;
     private readonly string _outDir;
@@ -51,8 +51,10 @@ public sealed class UiTestRunner
             catch (Exception ex) { r.Log($"!! {ex.GetType().Name}: {ex.Message}"); r._fail++; }
         }
         r.Log($"== done: {r._pass} passed, {r._fail} failed");
-        r._log.Dispose();
+        r.Dispose();
     }
+
+    public void Dispose() => _log.Dispose();
 
     private void Log(string s)
     {
@@ -138,7 +140,7 @@ public sealed class UiTestRunner
     };
 
     /// <summary>Selector: #Name | @Text | #Scope@Text ; optional "~n" picks the n-th match (1-based).</summary>
-    private Control Find(string selector)
+    private static Control Find(string selector)
     {
         var index = 1;
         var tilde = selector.LastIndexOf('~');
@@ -348,7 +350,7 @@ public sealed class UiTestRunner
         else { _fail++; Log($"  FAIL {what}: expected '{expected}', actual '{actual}'"); }
     }
 
-    private bool TryFind(string selector)
+    private static bool TryFind(string selector)
     {
         try { Find(selector); return true; } catch { return false; }
     }
@@ -374,7 +376,7 @@ internal sealed class RawInput
         var locator = asm.GetType("Avalonia.AvaloniaLocator")!;
         var current = locator.GetProperty("Current", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic)!.GetValue(null)!;
         var getService = current.GetType().GetMethod("GetService", new[] { typeof(Type) })!;
-        _keyboard = getService.Invoke(current, new object[] { typeof(IKeyboardDevice) }) ?? Activator.CreateInstance(typeof(KeyboardDevice))!;
+        _keyboard = getService.Invoke(current, new object[] { typeof(IKeyboardDevice) }) ?? Activator.CreateInstance<KeyboardDevice>();
         _mouse = getService.Invoke(current, new object[] { typeof(IMouseDevice) }) ?? _mouse;
     }
 

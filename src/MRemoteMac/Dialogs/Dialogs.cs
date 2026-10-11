@@ -33,7 +33,7 @@ public static class Dialogs
 
     private static TextBlock Heading(string text) => new() { Text = text, FontWeight = FontWeight.SemiBold, FontSize = 13, TextWrapping = TextWrapping.Wrap, MaxWidth = 460, Margin = new Thickness(0, 0, 0, 6) };
 
-    private static Control Labeled(string label, Control c)
+    private static DockPanel Labeled(string label, Control c)
         => new DockPanel { Margin = new Thickness(0, 2), Children = { new TextBlock { Text = label, Width = 84, VerticalAlignment = VerticalAlignment.Center, [DockPanel.DockProperty] = Dock.Left }, c } };
 
     public static async Task<CertificateDecision> Certificate(Window owner, CertificateInfo c, bool allowAccept = true)

@@ -61,7 +61,7 @@ public sealed partial class MainWindow : Window
         {
             if (e.PropertyName == nameof(MainViewModel.SelectedNode)) OnSelectedNodeChanged();
         };
-        ConfigGrid.PropertyChanged += (_, prop) =>
+        ConfigGrid.ValueChanged += (_, prop) =>
         {
             _vm.MarkDirty();
             if (prop is nameof(ConnectionInfo.Icon) or nameof(ConnectionInfo.Name)) UpdateConfigHeader();
@@ -83,6 +83,9 @@ public sealed partial class MainWindow : Window
                 Command = new RelaySimpleCommand(() => { if (index < Tabs.Items.Count) Tabs.SelectedIndex = index; })
             });
         }
+
+        // Cmd+Up/Down must win over the TreeView's own Up/Down navigation, so intercept them while tunnelling
+        Tree.AddHandler(KeyDownEvent, OnTreeKeyDownTunnel, RoutingStrategies.Tunnel);
 
         Opened += (_, _) => AsyncHelper.Fire(OnOpenedAsync, "Startup");
         Closing += OnClosing;
@@ -282,7 +285,7 @@ public sealed partial class MainWindow : Window
         {
             Title = "Open Connection File", AllowMultiple = false, FileTypeFilter = [ConnectionFileType, FilePickerFileTypes.All]
         });
-        var path = files.FirstOrDefault()?.TryGetLocalPath();
+        var path = files.Count > 0 ? files[0].TryGetLocalPath() : null;
         if (path is null) return;
         SaveIfDirty();
         await LoadFileWithPromptAsync(path);
@@ -371,7 +374,7 @@ public sealed partial class MainWindow : Window
     private async Task ImportFileAsync()
     {
         var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions { Title = "Import connections from file", AllowMultiple = false, FileTypeFilter = [ConnectionFileType, FilePickerFileTypes.All] });
-        var path = files.FirstOrDefault()?.TryGetLocalPath();
+        var path = files.Count > 0 ? files[0].TryGetLocalPath() : null;
         if (path is null) return;
         string? password = null;
         for (var attempt = 0; attempt < 3; attempt++)
@@ -487,6 +490,16 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void OnTreeKeyDownTunnel(object? sender, KeyEventArgs e)
+    {
+        if (!e.KeyModifiers.HasFlag(KeyModifiers.Meta) || Selected is null) return;
+        switch (e.Key)
+        {
+            case Key.Up: OnMoveUp(sender, e); e.Handled = true; break;
+            case Key.Down: OnMoveDown(sender, e); e.Handled = true; break;
+        }
+    }
+
     /// <summary>Tree shortcuts also work when focus sits on a toolbar button or nothing in particular (like WinForms).</summary>
     protected override void OnKeyDown(KeyEventArgs e)
     {
@@ -558,9 +571,11 @@ public sealed partial class MainWindow : Window
             : $"Delete connection '{n.Name}'?";
         var r = await Dialogs.Dialogs.Message(this, "Delete", text, Dialogs.Dialogs.MsgButtons.YesNo);
         if (r != Dialogs.Dialogs.MsgResult.Yes) return;
+        var parent = n.Parent;
         _vm.Delete(n);
         ScheduleAutoSave();
-        Dispatcher.UIThread.Post(FocusTree, DispatcherPriority.Loaded);
+        // the TreeView may re-select a neighbour while it tears down the removed container; settle on the parent afterwards
+        Dispatcher.UIThread.Post(() => { if (parent is not null) _vm.SelectedNode = parent; FocusTree(); }, DispatcherPriority.Background);
     }
 
     private void OnRename(object? sender, RoutedEventArgs e) => AsyncHelper.Fire(RenameSelectedAsync, "Rename");
@@ -742,14 +757,14 @@ public sealed partial class MainWindow : Window
         tab.CloseRequested += t => AsyncHelper.Fire(() => CloseTabAsync(t), "Close tab");
         tab.StateChanged += UpdateTabHeader;
         _vm.Tabs.Add(tab);
-        var item = new TabItem { Content = tab.Content, Tag = tab, Header = BuildTabHeader(tab) };
+        var item = new TabItem { Content = tab.Content, Tag = tab, Header = BuildTabHeader(tab), ContextMenu = BuildTabContextMenu(tab) };
         Tabs.Items.Add(item);
         Tabs.SelectedItem = item;
         UpdateEmptyHint();
         await tab.ConnectAsync();
     }
 
-    private Control BuildTabHeader(ConnectionTab tab)
+    private StackPanel BuildTabHeader(ConnectionTab tab)
     {
         var icon = new Image { Source = ImageCache.ConnectionIcon(tab.Info.Icon), Width = 16, Height = 16, Margin = new Thickness(0, 0, 5, 0) };
         var text = new TextBlock { Text = tab.Title, VerticalAlignment = VerticalAlignment.Center };
@@ -757,7 +772,6 @@ public sealed partial class MainWindow : Window
         ToolTip.SetTip(close, "Disconnect");
         close.Click += (_, _) => AsyncHelper.Fire(() => CloseTabAsync(tab), "Close tab");
         var panel = new StackPanel { Orientation = Orientation.Horizontal, Children = { icon, text, close }, Background = Avalonia.Media.Brushes.Transparent };
-        panel.ContextMenu = BuildTabContextMenu(tab);
         panel.PointerPressed += (_, e) =>
         {
             if (e.GetCurrentPoint(panel).Properties.IsMiddleButtonPressed) AsyncHelper.Fire(() => CloseTabAsync(tab), "Close tab");

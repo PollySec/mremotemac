@@ -16,6 +16,8 @@ public sealed class RdpClientOptions
 /// <summary>Translates an mRemoteNG ConnectionInfo into FreeRDP settings on an RdpSession.</summary>
 public static class RdpSettingsBuilder
 {
+    private static readonly char[] PathSeparators = [';', ','];
+
     public static void Apply(RdpSession s, ConnectionInfo c, int desktopWidth, int desktopHeight, RdpClientOptions opt,
         bool connectToConsoleOverride = false, bool withoutCredentials = false)
     {
@@ -108,7 +110,7 @@ public static class RdpSettingsBuilder
                 if (Directory.Exists("/Volumes")) args.Add("/drive:Volumes,/Volumes");
                 break;
             case RdpDiskDrives.Custom:
-                foreach (var p in Eff<string>(nameof(ConnectionInfo.RedirectDiskDrivesCustom)).Split(new[] { ';', ',' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                foreach (var p in Eff<string>(nameof(ConnectionInfo.RedirectDiskDrivesCustom)).Split(PathSeparators, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
                 {
                     var path = p.Replace("~", Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
                     if (Directory.Exists(path)) args.Add($"/drive:{Path.GetFileName(path.TrimEnd('/'))},{path}");

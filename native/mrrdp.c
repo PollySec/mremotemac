@@ -101,6 +101,8 @@ static BOOL mr_end_paint(rdpContext* context)
 			continue;
 		s->cb.on_frame(s->cb.user, x, y, x2 - x, y2 - y);
 	}
+	if (s->cb.on_present)
+		s->cb.on_present(s->cb.user);
 	return TRUE;
 }
 
@@ -115,6 +117,8 @@ static BOOL mr_desktop_resize(rdpContext* context)
 		return FALSE;
 	if (s->cb.on_resize)
 		s->cb.on_resize(s->cb.user, gdi->width, gdi->height);
+	if (s->cb.on_present)
+		s->cb.on_present(s->cb.user);
 	return TRUE;
 }
 

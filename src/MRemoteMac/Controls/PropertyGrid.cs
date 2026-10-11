@@ -60,7 +60,7 @@ public sealed partial class PropertyRow : GridRow
 
     public IEnumerable<object> EnumValues => IsEnum ? Enum.GetValues(EditorType).Cast<object>() : Array.Empty<object>();
     public static IEnumerable<string> BoolValues { get; } = new[] { "True", "False" };
-    public IEnumerable<string> IconValues => ImageCache.AvailableIcons();
+    public static IEnumerable<string> IconValues => ImageCache.AvailableIcons();
 
     public object? Value
     {
@@ -127,7 +127,7 @@ public sealed class PropertyGrid : UserControl
     private bool _inheritanceMode;
     private readonly List<PropertyRow> _rows = new();
 
-    public event Action<ConnectionInfo, string>? PropertyChanged;
+    public event Action<ConnectionInfo, string>? ValueChanged;
 
     public static readonly StyledProperty<double> NameColumnWidthProperty =
         AvaloniaProperty.Register<PropertyGrid, double>(nameof(NameColumnWidth), 130);
@@ -203,7 +203,7 @@ public sealed class PropertyGrid : UserControl
                 var row = new PropertyRow(_target, p, cat, _inheritanceMode);
                 row.Changed += r =>
                 {
-                    PropertyChanged?.Invoke(r.Target, r.Property.Name);
+                    ValueChanged?.Invoke(r.Target, r.Property.Name);
                     if (r.IsInheritanceRow) RefreshValues();
                 };
                 cat.Properties.Add(row);
@@ -218,7 +218,7 @@ public sealed class PropertyGrid : UserControl
         _items.ItemsSource = list;
     }
 
-    private IDataTemplate BuildTemplate()
+    private FuncDataTemplate<GridRow> BuildTemplate()
     {
         return new FuncDataTemplate<GridRow>((row, _) => row switch
         {
@@ -228,7 +228,7 @@ public sealed class PropertyGrid : UserControl
         }, supportsRecycling: false);
     }
 
-    private Control BuildCategory(CategoryRow c)
+    private Border BuildCategory(CategoryRow c)
     {
         var arrow = new TextBlock { Text = c.IsExpanded ? "⊟" : "⊞", Width = 14, FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
         var panel = new StackPanel { Orientation = Orientation.Horizontal, Children = { arrow, new TextBlock { Text = c.Name, FontWeight = FontWeight.Bold, VerticalAlignment = VerticalAlignment.Center } } };
@@ -252,7 +252,7 @@ public sealed class PropertyGrid : UserControl
         return border;
     }
 
-    private Control BuildProperty(PropertyRow p)
+    private Grid BuildProperty(PropertyRow p)
     {
         var grid = new Grid { Height = 20 };
         grid.ColumnDefinitions.Add(new ColumnDefinition(new GridLength(NameColumnWidth)));
@@ -280,7 +280,7 @@ public sealed class PropertyGrid : UserControl
         return grid;
     }
 
-    private Control BuildEditor(PropertyRow p)
+    private static Control BuildEditor(PropertyRow p)
     {
         if (p.IsBool)
         {
@@ -298,7 +298,7 @@ public sealed class PropertyGrid : UserControl
         }
         if (p.IsIcon)
         {
-            var icons = p.IconValues.ToList();
+            var icons = PropertyRow.IconValues.ToList();
             var cb = new ComboBox { ItemsSource = icons, SelectedItem = p.Value as string, IsEnabled = !p.IsReadOnly };
             cb.Classes.Add("grid");
             cb.ItemTemplate = new FuncDataTemplate<string>((s, _) => new StackPanel

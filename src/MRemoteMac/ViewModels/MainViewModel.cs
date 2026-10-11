@@ -9,7 +9,7 @@ namespace MRemoteMac.ViewModels;
 public sealed partial class MainViewModel : ObservableObject
 {
     public AppSettings Settings { get; }
-    public Notifications Notifications => Notifications.Instance;
+    public static Notifications Notifications => Notifications.Instance;
     public ObservableCollection<ConnectionInfo> TreeRoots { get; } = new();
     public ObservableCollection<ConnectionTab> Tabs { get; } = new();
 

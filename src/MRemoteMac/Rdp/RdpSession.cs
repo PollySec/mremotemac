@@ -84,6 +84,7 @@ public sealed unsafe class RdpSession : IDisposable
         {
             user = GCHandle.ToIntPtr(_self),
             on_frame = (IntPtr)(delegate* unmanaged[Cdecl]<IntPtr, int, int, int, int, void>)&OnFrame,
+            on_present = (IntPtr)(delegate* unmanaged[Cdecl]<IntPtr, void>)&OnPresent,
             on_resize = (IntPtr)(delegate* unmanaged[Cdecl]<IntPtr, int, int, void>)&OnResize,
             on_connected = (IntPtr)(delegate* unmanaged[Cdecl]<IntPtr, void>)&OnConnected,
             on_disconnected = (IntPtr)(delegate* unmanaged[Cdecl]<IntPtr, uint, IntPtr, IntPtr, void>)&OnDisconnected,
@@ -199,7 +200,6 @@ public sealed unsafe class RdpSession : IDisposable
             s.Width = fbw; s.Height = fbh;
             target.Resize(fbw, fbh);
             target.Write(src, stride, 0, 0, fbw, fbh);
-            target.Present();
             return;
         }
         var x1 = Math.Min(x + w, fbw);
@@ -207,8 +207,10 @@ public sealed unsafe class RdpSession : IDisposable
         x = Math.Max(x, 0); y = Math.Max(y, 0);
         if (x1 <= x || y1 <= y) return;
         target.Write(src + (long)y * stride + x * 4, stride, x, y, x1 - x, y1 - y);
-        target.Present();
     }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void OnPresent(IntPtr user) => From(user)?._target?.Present();
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void OnResize(IntPtr user, int w, int h)
@@ -218,10 +220,7 @@ public sealed unsafe class RdpSession : IDisposable
         s.Width = w; s.Height = h;
         target.Resize(w, h);
         if (s._handle != IntPtr.Zero && Native.mr_get_framebuffer(s._handle, out var src, out var fbw, out var fbh, out var stride) != 0 && fbw == w && fbh == h)
-        {
             target.Write(src, stride, 0, 0, w, h);
-            target.Present();
-        }
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
@@ -242,11 +241,25 @@ public sealed unsafe class RdpSession : IDisposable
         s.LastError = error;
         var n = Str(name);
         var d = Str(desc);
+        s.LastErrorName = n;
         s.LastErrorText = error == 0 ? "" : string.IsNullOrEmpty(d) ? n : $"{d} ({n})";
         s.Disconnected?.Invoke(error, s.LastErrorText);
     }
 
     private static string Str(IntPtr p) => Marshal.PtrToStringUTF8(p) ?? "";
+
+    /// <summary>Error names that mean the session ended on purpose (user logoff, admin disconnect, our own cancel) rather than failed.</summary>
+    private static readonly HashSet<string> CleanDisconnectNames = new(StringComparer.Ordinal)
+    {
+        "ERRINFO_LOGOFF_BY_USER", "ERRINFO_RPC_INITIATED_DISCONNECT", "ERRINFO_RPC_INITIATED_LOGOFF",
+        "ERRINFO_RPC_INITIATED_DISCONNECT_BY_USER", "ERRINFO_DISCONNECTED_BY_OTHER_CONNECTION",
+        "ERRINFO_IDLE_TIMEOUT", "ERRINFO_LOGON_TIMEOUT", "ERRCONNECT_CONNECT_CANCELLED"
+    };
+
+    public static bool IsCleanDisconnect(uint error, string name) => error == 0 || CleanDisconnectNames.Contains(name);
+
+    /// <summary>Symbolic FreeRDP error name of the last disconnect (e.g. ERRINFO_LOGOFF_BY_USER), empty on success.</summary>
+    public string LastErrorName { get; private set; } = "";
 
     private static TResult AskUi<TResult>(Func<Task<TResult>> ask, TResult fallback)
     {

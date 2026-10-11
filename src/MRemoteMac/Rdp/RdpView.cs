@@ -18,7 +18,8 @@ public enum ViewScaleMode { SmartSize, FitToWindow, Native }
 public sealed class RdpView : Control, IRdpFrameTarget
 {
     private RdpSession? _session;
-    private WriteableBitmap? _bitmap;          // written on the RDP thread, drawn on the UI thread
+    private volatile WriteableBitmap? _bitmap;   // written on the RDP thread, drawn on the UI thread
+    private readonly object _swapLock = new();  // guards _bitmap replacement vs. producer writes
     private int _presentPending;
     private readonly DispatcherTimer _resizeTimer;
     private Cursor? _remoteCursor;
@@ -89,25 +90,36 @@ public sealed class RdpView : Control, IRdpFrameTarget
     public void Resize(int width, int height)
     {
         if (width <= 0 || height <= 0) return;
+        // Bgra8888 is Skia's native format (no transcoding); Opaque skips blending. Creating off the UI thread is fine.
         var fresh = new WriteableBitmap(new PixelSize(width, height), new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Opaque);
-        var old = Interlocked.Exchange(ref _bitmap, fresh);
-        if (old is not null) Dispatcher.UIThread.Post(old.Dispose, DispatcherPriority.Background);
+        WriteableBitmap? old;
+        lock (_swapLock)
+        {
+            old = _bitmap;
+            _bitmap = fresh;
+        }
+        // Bitmaps are ref-counted: the render thread keeps its own reference until the draw list is replaced.
+        old?.Dispose();
     }
 
     public unsafe void Write(byte* src, int srcStride, int x, int y, int width, int height)
     {
-        var bmp = Volatile.Read(ref _bitmap);
-        if (bmp is null) return;
-        var size = bmp.PixelSize;
-        if (x < 0 || y < 0 || x + width > size.Width || y + height > size.Height) return;
-        using var fb = bmp.Lock();
-        var rowBytes = width * 4;
-        var dst = (byte*)fb.Address + (long)y * fb.RowBytes + x * 4;
-        for (var row = 0; row < height; row++)
+        lock (_swapLock)
         {
-            new ReadOnlySpan<byte>(src, rowBytes).CopyTo(new Span<byte>(dst, rowBytes));
-            src += srcStride;
-            dst += fb.RowBytes;
+            var bmp = _bitmap;
+            if (bmp is null) return;
+            var size = bmp.PixelSize;
+            if (x < 0 || y < 0 || x + width > size.Width || y + height > size.Height) return;
+            // Lock() excludes the render thread's Draw; keep it short: memcpy of the dirty rows only.
+            using var fb = bmp.Lock();
+            var rowBytes = width * 4;
+            var dst = (byte*)fb.Address + (long)y * fb.RowBytes + x * 4;
+            for (var row = 0; row < height; row++)
+            {
+                new ReadOnlySpan<byte>(src, rowBytes).CopyTo(new Span<byte>(dst, rowBytes));
+                src += srcStride;
+                dst += fb.RowBytes;
+            }
         }
     }
 
@@ -141,10 +153,11 @@ public sealed class RdpView : Control, IRdpFrameTarget
     public override void Render(DrawingContext context)
     {
         context.FillRectangle(Brushes.Black, new Rect(Bounds.Size));
-        var bmp = Volatile.Read(ref _bitmap);
+        var bmp = _bitmap;
         if (bmp is null) return;
         var dest = DestRect(bmp.PixelSize);
-        using (context.PushRenderOptions(new RenderOptions { BitmapInterpolationMode = dest.Width < bmp.PixelSize.Width ? BitmapInterpolationMode.HighQuality : BitmapInterpolationMode.None }))
+        var scaled = Math.Abs(dest.Width - bmp.PixelSize.Width) > 0.5;
+        using (context.PushRenderOptions(new RenderOptions { BitmapInterpolationMode = scaled ? BitmapInterpolationMode.LowQuality : BitmapInterpolationMode.None }))
             context.DrawImage(bmp, new Rect(bmp.Size), dest);
     }
 
@@ -163,7 +176,7 @@ public sealed class RdpView : Control, IRdpFrameTarget
     {
         if (_session is null || ScaleMode != ViewScaleMode.FitToWindow) return;
         var (w, h) = SuggestedDesktopSize();
-        var bmp = Volatile.Read(ref _bitmap);
+        var bmp = _bitmap;
         if (bmp is not null && bmp.PixelSize.Width == w && bmp.PixelSize.Height == h) return;
         _session.ResizeDesktop(w, h);
     }
@@ -185,7 +198,7 @@ public sealed class RdpView : Control, IRdpFrameTarget
         if (ptr is null) { _remoteCursor = null; Cursor = Cursor.Default; return; }
         if (ptr.Cached is not Cursor cursor)
         {
-            cursor = CreateCursor(ptr);
+            cursor = CreateCursor(ptr, TopLevel.GetTopLevel(this)?.RenderScaling ?? 1.0);
             ptr.Cached = cursor;
         }
         _remoteCursor = cursor;
@@ -194,19 +207,20 @@ public sealed class RdpView : Control, IRdpFrameTarget
 
     private void OnPointerHidden() => Dispatcher.UIThread.Post(() => { _cursorHidden = true; Cursor = new Cursor(StandardCursorType.None); });
 
-    private static unsafe Cursor CreateCursor(RemotePointer p)
+    private static unsafe Cursor CreateCursor(RemotePointer p, double scaling)
     {
         fixed (byte* data = p.Bgra)
         {
             using var bmp = new Bitmap(PixelFormat.Bgra8888, AlphaFormat.Unpremul, (IntPtr)data, new PixelSize(p.Width, p.Height), new Vector(96, 96), p.Width * 4);
-            return new Cursor(bmp, new PixelPoint(p.HotX, p.HotY));
+            // Avalonia passes the hotspot to NSCursor in points, so divide by the Retina scale (AvaloniaUI/Avalonia#6805).
+            return new Cursor(bmp, new PixelPoint((int)Math.Round(p.HotX / scaling), (int)Math.Round(p.HotY / scaling)));
         }
     }
 
     private bool ToRemote(Point pt, out int rx, out int ry)
     {
         rx = ry = 0;
-        var bmp = Volatile.Read(ref _bitmap);
+        var bmp = _bitmap;
         if (bmp is null) return false;
         var dest = DestRect(bmp.PixelSize);
         if (dest.Width <= 0 || dest.Height <= 0) return false;
@@ -223,6 +237,8 @@ public sealed class RdpView : Control, IRdpFrameTarget
         if (x == _lastMouseX && y == _lastMouseY) return;
         _lastMouseX = x; _lastMouseY = y;
         _session.SendMouse(RdpInput.PTR_FLAGS_MOVE, x, y);
+        // 11.3.x may lose a programmatically set cursor (AvaloniaUI/Avalonia#19676): re-apply cheaply on move
+        if (!_cursorHidden && _remoteCursor is not null && !ReferenceEquals(Cursor, _remoteCursor)) Cursor = _remoteCursor;
     }
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)
@@ -377,7 +393,8 @@ public sealed class RdpView : Control, IRdpFrameTarget
 
     public void DisposeBitmap()
     {
-        var old = Interlocked.Exchange(ref _bitmap, null);
+        WriteableBitmap? old;
+        lock (_swapLock) { old = _bitmap; _bitmap = null; }
         old?.Dispose();
     }
 }

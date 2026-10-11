@@ -12,6 +12,7 @@ internal static unsafe partial class Native
     {
         public IntPtr user;
         public IntPtr on_frame;
+        public IntPtr on_present;
         public IntPtr on_resize;
         public IntPtr on_connected;
         public IntPtr on_disconnected;
