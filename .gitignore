@@ -5,3 +5,4 @@ obj/
 native/out/
 native/build/
 *.user
+dist/

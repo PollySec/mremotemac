@@ -101,8 +101,20 @@ public sealed partial class ConnectionTab : ObservableObject
         };
 
         var authLevel = Info.GetEffective<AuthenticationLevel>(nameof(ConnectionInfo.RdpAuthenticationLevel));
-        session.VerifyCertificate = info => Dialogs.Dialogs.Certificate(_owner, info, allowAccept: authLevel != AuthenticationLevel.AuthRequired || info.Changed == false && authLevel != AuthenticationLevel.AuthRequired);
-        session.Authenticate = req => Dialogs.Dialogs.CredentialsPrompt(_owner, req, Info.Name);
+        session.VerifyCertificate = info =>
+        {
+            Notifications.Instance.Warn($"{Info.Name}: certificate for {info.Host} could not be verified, asking the user.");
+            return Dialogs.Dialogs.Certificate(_owner, info, allowAccept: authLevel != AuthenticationLevel.AuthRequired);
+        };
+        var useCredSsp = Info.GetEffective<bool>(nameof(ConnectionInfo.UseCredSsp));
+        session.Authenticate = req =>
+        {
+            // Without CredSSP (NLA) the server shows its own logon screen, like mstsc: pass through whatever we have.
+            if (!useCredSsp && req.Reason is 1 or 2 && !WithoutCredentials)
+                return Task.FromResult<Credentials?>(new Credentials(req.Username, req.Password, req.Domain));
+            Notifications.Instance.Info($"{Info.Name}: credentials requested ({req.ReasonText}).");
+            return Dialogs.Dialogs.CredentialsPrompt(_owner, req, Info.Name);
+        };
 
         session.Connected += () =>
         {

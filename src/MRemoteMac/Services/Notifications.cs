@@ -20,6 +20,7 @@ public sealed record NotificationMessage(MessageClass Class, string Text, DateTi
 public sealed class Notifications
 {
     public static Notifications Instance { get; } = new();
+    public static bool EchoToConsole { get; set; } = Environment.GetEnvironmentVariable("MRM_LOG") == "1";
     public ObservableCollection<NotificationMessage> Messages { get; } = new();
     public event Action<NotificationMessage>? MessageAdded;
 
@@ -29,6 +30,7 @@ public sealed class Notifications
         {
             var m = new NotificationMessage(cls, text, DateTime.Now);
             Messages.Add(m);
+            if (EchoToConsole) Console.Error.WriteLine($"[{cls}] {text}");
             while (Messages.Count > 500) Messages.RemoveAt(0);
             MessageAdded?.Invoke(m);
         }

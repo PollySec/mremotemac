@@ -90,6 +90,12 @@ public partial class MainWindow : Window
         if (Environment.GetEnvironmentVariable("MRM_SELECT") is { Length: > 0 } selName &&
             _vm.Root.Descendants().FirstOrDefault(n => n.Name == selName) is { } selNode)
             SelectNode(selNode);
+        if (Environment.GetEnvironmentVariable("MRM_CONNECT_NODE") is { Length: > 0 } nodeName &&
+            _vm.Root.Descendants().FirstOrDefault(n => n.Name == nodeName) is { } connNode)
+        {
+            await OpenConnection(connNode);
+            if (int.TryParse(Environment.GetEnvironmentVariable("MRM_CONNECT_WAIT"), out var wait2)) await Task.Delay(wait2);
+        }
         if (Environment.GetEnvironmentVariable("MRM_CONNECT") is { Length: > 0 } target)
         {
             QuickConnectBox.Text = target;
