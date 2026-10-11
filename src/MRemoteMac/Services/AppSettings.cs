@@ -26,11 +26,11 @@ public sealed class AppSettings
     public bool UseGfx { get; set; } = true;
     public string QuickConnectProtocol { get; set; } = "RDP";
     public List<string> QuickConnectHistory { get; set; } = new();
-    public double TreePaneWidth { get; set; } = 280;
-    public double ConfigPaneHeight { get; set; } = 250;
-    public double NotificationsHeight { get; set; } = 140;
-    public int WindowWidth { get; set; } = 1129;
-    public int WindowHeight { get; set; } = 571;
+    public double TreePaneWidth { get; set; } = 300;
+    public double ConfigPaneHeight { get; set; } = 280;
+    public double NotificationsHeight { get; set; } = 150;
+    public int WindowWidth { get; set; } = 1180;
+    public int WindowHeight { get; set; } = 720;
     public int? WindowX { get; set; }
     public int? WindowY { get; set; }
     public bool WindowMaximized { get; set; }

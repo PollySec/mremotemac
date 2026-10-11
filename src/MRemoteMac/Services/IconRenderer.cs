@@ -1,12 +1,13 @@
 using Avalonia;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using MRemoteMac.Controls;
 
 namespace MRemoteMac.Services;
 
 /// <summary>
-/// Draws the application icon procedurally (macOS squircle, deep blue gradient, display with a signal arc and a cursor)
-/// and saves it as PNG. Used by packaging/make-app.sh to produce the .icns and by the window/about icon.
+/// Draws the application icon: macOS squircle with the Graphite + Indigo palette (gradient #688BF3 → #2F4ABA),
+/// a white display glyph with session tabs, a connection arc and a green "connected" dot.
 /// </summary>
 public static class IconRenderer
 {
@@ -20,109 +21,114 @@ public static class IconRenderer
 
     public static void Draw(DrawingContext ctx, double s)
     {
-        // macOS icon grid: the squircle occupies ~82% of the canvas
-        var inset = s * 0.09;
+        // Apple grid: 824/1024 body, 100 px margin for the system shadow
+        var inset = s * 0.0977;
         var rect = new Rect(inset, inset, s - 2 * inset, s - 2 * inset);
-        var radius = rect.Width * 0.225;
+        var radius = rect.Width * 0.2237;
 
-        // soft drop shadow
-        for (var i = 6; i >= 1; i--)
+        // soft ambient shadow
+        for (var i = 8; i >= 1; i--)
         {
-            var sh = rect.Inflate(i * s * 0.004).Translate(new Vector(0, i * s * 0.004));
-            ctx.DrawRectangle(new SolidColorBrush(Color.FromArgb((byte)(10 + i * 2), 0, 0, 0)), null, sh, radius, radius);
+            var sh = rect.Inflate(i * s * 0.003).Translate(new Vector(0, i * s * 0.004));
+            ctx.DrawRectangle(new SolidColorBrush(Color.FromArgb((byte)(6 + i), 0x1A, 0x20, 0x50)), null, sh, radius, radius);
         }
 
-        // background: deep blue to teal gradient
-        var bg = new LinearGradientBrush
-        {
-            StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
-            EndPoint = new RelativePoint(1, 1, RelativeUnit.Relative),
-            GradientStops =
-            {
-                new GradientStop(Color.Parse("#1F3B8F"), 0),
-                new GradientStop(Color.Parse("#2563EB"), 0.55),
-                new GradientStop(Color.Parse("#06B6D4"), 1)
-            }
-        };
-        ctx.DrawRectangle(bg, null, rect, radius, radius);
-
-        // subtle top sheen
-        var sheen = new LinearGradientBrush
+        var body = new LinearGradientBrush
         {
             StartPoint = new RelativePoint(0.5, 0, RelativeUnit.Relative),
-            EndPoint = new RelativePoint(0.5, 0.6, RelativeUnit.Relative),
-            GradientStops = { new GradientStop(Color.FromArgb(70, 255, 255, 255), 0), new GradientStop(Color.FromArgb(0, 255, 255, 255), 1) }
+            EndPoint = new RelativePoint(0.5, 1, RelativeUnit.Relative),
+            GradientStops =
+            {
+                new GradientStop(Color.Parse("#688BF3"), 0),
+                new GradientStop(Color.Parse("#4464D3"), 0.55),
+                new GradientStop(Color.Parse("#2F4ABA"), 1)
+            }
         };
-        ctx.DrawRectangle(sheen, null, rect, radius, radius);
+        ctx.DrawRectangle(body, null, rect, radius, radius);
 
-        // monitor: rounded screen with bezel
-        var mw = rect.Width * 0.62;
-        var mh = mw * 0.64;
-        var mx = rect.X + (rect.Width - mw) / 2;
-        var my = rect.Y + rect.Height * 0.21;
-        var screen = new Rect(mx, my, mw, mh);
-        var screenR = mw * 0.08;
-        ctx.DrawRectangle(new SolidColorBrush(Color.FromArgb(60, 0, 0, 0)), null, screen.Translate(new Vector(0, s * 0.012)).Inflate(s * 0.006), screenR, screenR);
-        ctx.DrawRectangle(Brushes.White, null, screen, screenR, screenR);
-        var inner = screen.Deflate(mw * 0.045);
-        var innerBrush = new LinearGradientBrush
+        // top inner highlight + bottom shade (Big Sur style)
+        var highlight = new LinearGradientBrush
         {
-            StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
-            EndPoint = new RelativePoint(1, 1, RelativeUnit.Relative),
-            GradientStops = { new GradientStop(Color.Parse("#0F172A"), 0), new GradientStop(Color.Parse("#1E3A8A"), 1) }
+            StartPoint = new RelativePoint(0.5, 0, RelativeUnit.Relative),
+            EndPoint = new RelativePoint(0.5, 0.12, RelativeUnit.Relative),
+            GradientStops = { new GradientStop(Color.FromArgb(46, 255, 255, 255), 0), new GradientStop(Color.FromArgb(0, 255, 255, 255), 1) }
         };
-        ctx.DrawRectangle(innerBrush, null, inner, screenR * 0.6, screenR * 0.6);
+        ctx.DrawRectangle(highlight, null, rect, radius, radius);
+        var shade = new LinearGradientBrush
+        {
+            StartPoint = new RelativePoint(0.5, 0.9, RelativeUnit.Relative),
+            EndPoint = new RelativePoint(0.5, 1, RelativeUnit.Relative),
+            GradientStops = { new GradientStop(Color.FromArgb(0, 0x1A, 0x20, 0x50), 0), new GradientStop(Color.FromArgb(50, 0x1A, 0x20, 0x50), 1) }
+        };
+        ctx.DrawRectangle(shade, null, rect, radius, radius);
+        ctx.DrawRectangle(null, new Pen(new SolidColorBrush(Color.FromArgb(64, 255, 255, 255)), s * 0.004), rect.Deflate(s * 0.002), radius, radius);
+
+        // ---- glyph: a display with session tabs ----
+        var white = Brushes.White;
+        var tint = new SolidColorBrush(Color.Parse("#C6D7FF"));
+        var mw = rect.Width * 0.58;
+        var mh = mw * 0.66;
+        var mx = rect.X + (rect.Width - mw) / 2;
+        var my = rect.Y + rect.Height * 0.22;
+        var screen = new Rect(mx, my, mw, mh);
+        var r = mw * 0.07;
+
+        // glyph shadow
+        ctx.DrawRectangle(new SolidColorBrush(Color.FromArgb(60, 0x1A, 0x20, 0x50)), null, screen.Translate(new Vector(0, s * 0.012)).Inflate(s * 0.004), r, r);
+        // bezel + face
+        ctx.DrawRectangle(white, null, screen, r, r);
+        var face = screen.Deflate(mw * 0.035);
+        var faceBrush = new LinearGradientBrush
+        {
+            StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(1, 1, RelativeUnit.Relative),
+            GradientStops = { new GradientStop(Color.Parse("#2F4ABA"), 0), new GradientStop(Color.Parse("#1E2D7A"), 1) }
+        };
+        ctx.DrawRectangle(faceBrush, null, face, r * 0.65, r * 0.65);
+
+        // tab strip inside the face
+        var tabY = face.Y + face.Height * 0.09;
+        var tabH = face.Height * 0.14;
+        var tabW = face.Width * 0.22;
+        var tabX = face.X + face.Width * 0.08;
+        for (var i = 0; i < 3; i++)
+        {
+            var isActive = i == 0;
+            var tr = new Rect(tabX + i * (tabW + face.Width * 0.03), tabY, tabW, tabH);
+            ctx.DrawRectangle(isActive ? white : new SolidColorBrush(Color.FromArgb(90, 0xC6, 0xD7, 0xFF)), null, tr, s * 0.012, s * 0.012);
+        }
+        // window content lines
+        var lineY = tabY + tabH + face.Height * 0.12;
+        for (var i = 0; i < 3; i++)
+        {
+            var lw = face.Width * (0.72 - i * 0.18);
+            ctx.DrawRectangle(tint, null, new Rect(face.X + face.Width * 0.08, lineY + i * face.Height * 0.16, lw, face.Height * 0.07), s * 0.008, s * 0.008);
+        }
 
         // stand
-        var standW = mw * 0.26;
-        var standH = mh * 0.14;
-        var neck = new Rect(mx + (mw - standW * 0.35) / 2, my + mh, standW * 0.35, standH * 0.9);
-        ctx.DrawRectangle(Brushes.White, null, neck, s * 0.01, s * 0.01);
-        var foot = new Rect(mx + (mw - standW) / 2, my + mh + standH * 0.8, standW, standH * 0.45);
-        ctx.DrawRectangle(Brushes.White, null, foot, foot.Height / 2, foot.Height / 2);
+        var neckW = mw * 0.10;
+        var neckH = mh * 0.12;
+        ctx.DrawRectangle(white, null, new Rect(mx + (mw - neckW) / 2, my + mh, neckW, neckH), s * 0.008, s * 0.008);
+        var footW = mw * 0.34;
+        var footH = mh * 0.055;
+        ctx.DrawRectangle(white, null, new Rect(mx + (mw - footW) / 2, my + mh + neckH - footH * 0.2, footW, footH), footH / 2, footH / 2);
 
-        // signal arcs (remote connection) in the top-right of the screen
-        var cx = inner.Right - inner.Width * 0.22;
-        var cy = inner.Top + inner.Height * 0.48;
-        var pen = new Pen(new SolidColorBrush(Color.Parse("#67E8F9")), s * 0.028, lineCap: PenLineCap.Round);
-        for (var i = 1; i <= 3; i++)
+        // connection arcs + dot at the lower right of the display (signal / live session)
+        var cx = screen.Right - mw * 0.02;
+        var cy = screen.Bottom - mh * 0.02;
+        var arcPen = new Pen(white, s * 0.026, lineCap: PenLineCap.Round);
+        for (var i = 1; i <= 2; i++)
         {
-            var r = inner.Width * 0.09 * i;
+            var ar = mw * 0.11 * i;
             var geo = new StreamGeometry();
             using (var g = geo.Open())
             {
-                g.BeginFigure(new Point(cx - r * 0.7071, cy + r * 0.7071), false);
-                g.ArcTo(new Point(cx + r * 0.7071, cy - r * 0.7071), new Size(r, r), 0, false, SweepDirection.Clockwise);
+                g.BeginFigure(new Point(cx - ar, cy), false);
+                g.ArcTo(new Point(cx, cy - ar), new Size(ar, ar), 0, false, SweepDirection.Clockwise);
                 g.EndFigure(false);
             }
-            ctx.DrawGeometry(null, pen, geo);
+            ctx.DrawGeometry(null, arcPen, geo);
         }
-        ctx.DrawEllipse(new SolidColorBrush(Color.Parse("#67E8F9")), null, new Point(cx, cy), s * 0.022, s * 0.022);
-
-        // window glyph on the left (tabs / sessions)
-        var winRect = new Rect(inner.Left + inner.Width * 0.12, inner.Top + inner.Height * 0.3, inner.Width * 0.38, inner.Height * 0.42);
-        ctx.DrawRectangle(new SolidColorBrush(Color.FromArgb(230, 255, 255, 255)), null, winRect, s * 0.012, s * 0.012);
-        ctx.DrawRectangle(new SolidColorBrush(Color.Parse("#2563EB")), null, new Rect(winRect.X, winRect.Y, winRect.Width, winRect.Height * 0.22), s * 0.012, s * 0.012);
-        ctx.DrawRectangle(new SolidColorBrush(Color.Parse("#2563EB")), null, new Rect(winRect.X, winRect.Y + winRect.Height * 0.12, winRect.Width, winRect.Height * 0.1));
-        for (var i = 0; i < 3; i++)
-            ctx.DrawRectangle(new SolidColorBrush(Color.Parse("#93C5FD")), null, new Rect(winRect.X + winRect.Width * 0.12, winRect.Y + winRect.Height * (0.36 + i * 0.18), winRect.Width * (0.76 - i * 0.2), winRect.Height * 0.08), s * 0.004, s * 0.004);
-
-        // cursor arrow
-        var ax = inner.Left + inner.Width * 0.5;
-        var ay = inner.Top + inner.Height * 0.58;
-        var sc = inner.Width * 0.16;
-        var cursor = new StreamGeometry();
-        using (var g = cursor.Open())
-        {
-            g.BeginFigure(new Point(ax, ay), true);
-            g.LineTo(new Point(ax, ay + sc));
-            g.LineTo(new Point(ax + sc * 0.27, ay + sc * 0.77));
-            g.LineTo(new Point(ax + sc * 0.46, ay + sc * 1.12));
-            g.LineTo(new Point(ax + sc * 0.62, ay + sc * 1.04));
-            g.LineTo(new Point(ax + sc * 0.44, ay + sc * 0.7));
-            g.LineTo(new Point(ax + sc * 0.76, ay + sc * 0.7));
-            g.EndFigure(true);
-        }
-        ctx.DrawGeometry(Brushes.White, new Pen(new SolidColorBrush(Color.Parse("#0F172A")), s * 0.006, lineJoin: PenLineJoin.Round), cursor);
+        ctx.DrawEllipse(new SolidColorBrush(Color.Parse("#2F4ABA")), null, new Point(cx, cy), s * 0.052, s * 0.052);
+        ctx.DrawEllipse(new SolidColorBrush(Color.Parse("#69C27E")), new Pen(white, s * 0.012), new Point(cx, cy), s * 0.040, s * 0.040);
     }
 }

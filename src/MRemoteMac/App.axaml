@@ -1,211 +1,477 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="using:MRemoteMac.Controls"
              x:Class="MRemoteMac.App"
              RequestedThemeVariant="Light">
+    <!--
+      Colour system "Graphite + Indigo": one cool-graphite neutral ramp (hue 255°) and a single indigo accent (hue 268°).
+      Every text/background pair below meets WCAG AA (4.5:1 for text, 3:1 for UI); see docs/design.md.
+    -->
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.ThemeDictionaries>
-                <!-- mRemoteNG vs2015light -->
                 <ResourceDictionary x:Key="Light">
-                    <Color x:Key="MrDialogBackground">#FFEEEEF2</Color>
-                    <Color x:Key="MrDialogForeground">#FF1E1E1E</Color>
-                    <Color x:Key="MrTreeBackground">#FFF5F5F5</Color>
-                    <Color x:Key="MrTreeForeground">#FF1E1E1E</Color>
-                    <Color x:Key="MrSelectedActive">#FF3399FF</Color>
-                    <Color x:Key="MrSelectedActiveFg">#FFFFFFFF</Color>
-                    <Color x:Key="MrSelectedInactive">#FFCCCEDB</Color>
-                    <Color x:Key="MrTextBoxBackground">#FFFFFFFF</Color>
-                    <Color x:Key="MrBorder">#FFCCCEDB</Color>
-                    <Color x:Key="MrAccent">#FF007ACC</Color>
-                    <Color x:Key="MrTabBackground">#FFE7E8EC</Color>
-                    <Color x:Key="MrTabItemBackground">#FFF5F5F5</Color>
-                    <Color x:Key="MrButtonBackground">#FFECECF0</Color>
-                    <Color x:Key="MrButtonHover">#FFC9DEF5</Color>
-                    <Color x:Key="MrHeaderBackground">#FFDDDDDD</Color>
-                    <Color x:Key="MrGridLine">#FFE3E3E3</Color>
-                    <Color x:Key="MrPanelTitleBackground">#FFCCCEDB</Color>
-                    <Color x:Key="MrPanelTitleActive">#FF007ACC</Color>
+                    <Color x:Key="SurfaceWindow">#F3F5F7</Color>
+                    <Color x:Key="SurfaceSidebar">#F3F5F7</Color>
+                    <Color x:Key="SurfaceContent">#FFFFFF</Color>
+                    <Color x:Key="SurfaceElevated">#FFFFFF</Color>
+                    <Color x:Key="SurfaceTabBar">#ECEFF2</Color>
+                    <Color x:Key="SurfaceHover">#F3F5F7</Color>
+                    <Color x:Key="SurfaceSession">#101418</Color>
+                    <Color x:Key="BorderSubtle">#E7EAED</Color>
+                    <Color x:Key="BorderStrong">#CDD1D8</Color>
+                    <Color x:Key="BorderOnElevated">#E7EAED</Color>
+                    <Color x:Key="TextPrimary">#1A2028</Color>
+                    <Color x:Key="TextSecondary">#5D646C</Color>
+                    <Color x:Key="TextTertiary">#696F77</Color>
+                    <Color x:Key="TextDisabled">#A7ABB1</Color>
+                    <Color x:Key="TextOnAccent">#FFFFFF</Color>
+                    <Color x:Key="Accent">#4464D3</Color>
+                    <Color x:Key="AccentHover">#3957C5</Color>
+                    <Color x:Key="AccentPressed">#304CB5</Color>
+                    <Color x:Key="AccentText">#3552BC</Color>
+                    <Color x:Key="AccentSubtle">#E1EBFF</Color>
+                    <Color x:Key="AccentSubtleHover">#D3E1FF</Color>
+                    <Color x:Key="FocusRing">#5F80E0</Color>
+                    <Color x:Key="SelectionActive">#E1EBFF</Color>
+                    <Color x:Key="SelectionInactive">#E7EAED</Color>
+                    <Color x:Key="RowHover">#F3F5F7</Color>
+                    <Color x:Key="ButtonBg">#FFFFFF</Color>
+                    <Color x:Key="ButtonHover">#F3F5F7</Color>
+                    <Color x:Key="ButtonPressed">#E7EAED</Color>
+                    <Color x:Key="ButtonBorder">#CDD1D8</Color>
+                    <Color x:Key="InputBg">#FFFFFF</Color>
+                    <Color x:Key="InputBorder">#CDD1D8</Color>
+                    <Color x:Key="GridCategoryBg">#F3F5F7</Color>
+                    <Color x:Key="GridLine">#E7EAED</Color>
+                    <Color x:Key="StatusSuccess">#1D7D3E</Color>
+                    <Color x:Key="StatusWarning">#9C5F00</Color>
+                    <Color x:Key="StatusError">#BA3535</Color>
+                    <Color x:Key="StatusInfo">#0073AF</Color>
+                    <Color x:Key="StatusSuccessBg">#E6FAE9</Color>
+                    <Color x:Key="StatusWarningBg">#FFF1DE</Color>
+                    <Color x:Key="StatusErrorBg">#FFECE9</Color>
+                    <Color x:Key="OverlayScrim">#661A2028</Color>
+                    <!-- Fluent hooks so stock controls inherit the accent -->
+                    <Color x:Key="SystemAccentColor">#4464D3</Color>
+                    <Color x:Key="SystemAccentColorLight1">#5F80E0</Color>
+                    <Color x:Key="SystemAccentColorLight2">#E1EBFF</Color>
+                    <Color x:Key="SystemAccentColorLight3">#F0F5FF</Color>
+                    <Color x:Key="SystemAccentColorDark1">#3957C5</Color>
+                    <Color x:Key="SystemAccentColorDark2">#304CB5</Color>
+                    <Color x:Key="SystemAccentColorDark3">#263C96</Color>
                 </ResourceDictionary>
-                <!-- mRemoteNG vs2015dark -->
                 <ResourceDictionary x:Key="Dark">
-                    <Color x:Key="MrDialogBackground">#FF2D2D30</Color>
-                    <Color x:Key="MrDialogForeground">#FFF1F1F1</Color>
-                    <Color x:Key="MrTreeBackground">#FF252526</Color>
-                    <Color x:Key="MrTreeForeground">#FFF1F1F1</Color>
-                    <Color x:Key="MrSelectedActive">#FF3399FF</Color>
-                    <Color x:Key="MrSelectedActiveFg">#FFFFFFFF</Color>
-                    <Color x:Key="MrSelectedInactive">#FF3F3F46</Color>
-                    <Color x:Key="MrTextBoxBackground">#FF333337</Color>
-                    <Color x:Key="MrBorder">#FF434346</Color>
-                    <Color x:Key="MrAccent">#FF007ACC</Color>
-                    <Color x:Key="MrTabBackground">#FF1B1B1C</Color>
-                    <Color x:Key="MrTabItemBackground">#FF252526</Color>
-                    <Color x:Key="MrButtonBackground">#FF3F3F46</Color>
-                    <Color x:Key="MrButtonHover">#FF3E3E40</Color>
-                    <Color x:Key="MrHeaderBackground">#FF3F3F46</Color>
-                    <Color x:Key="MrGridLine">#FF3F3F46</Color>
-                    <Color x:Key="MrPanelTitleBackground">#FF3F3F46</Color>
-                    <Color x:Key="MrPanelTitleActive">#FF007ACC</Color>
+                    <Color x:Key="SurfaceWindow">#1C2127</Color>
+                    <Color x:Key="SurfaceSidebar">#1C2127</Color>
+                    <Color x:Key="SurfaceContent">#12161C</Color>
+                    <Color x:Key="SurfaceElevated">#272C32</Color>
+                    <Color x:Key="SurfaceTabBar">#171C22</Color>
+                    <Color x:Key="SurfaceHover">#21262C</Color>
+                    <Color x:Key="SurfaceSession">#0B0E12</Color>
+                    <Color x:Key="BorderSubtle">#292E35</Color>
+                    <Color x:Key="BorderStrong">#3D434A</Color>
+                    <Color x:Key="BorderOnElevated">#363C43</Color>
+                    <Color x:Key="TextPrimary">#E5E8EC</Color>
+                    <Color x:Key="TextSecondary">#A6ABB2</Color>
+                    <Color x:Key="TextTertiary">#878D95</Color>
+                    <Color x:Key="TextDisabled">#585E66</Color>
+                    <Color x:Key="TextOnAccent">#FFFFFF</Color>
+                    <Color x:Key="Accent">#4E6CCA</Color>
+                    <Color x:Key="AccentHover">#5473D2</Color>
+                    <Color x:Key="AccentPressed">#425EBB</Color>
+                    <Color x:Key="AccentText">#90AEFE</Color>
+                    <Color x:Key="AccentSubtle">#263359</Color>
+                    <Color x:Key="AccentSubtleHover">#2E3D6A</Color>
+                    <Color x:Key="FocusRing">#7694E9</Color>
+                    <Color x:Key="SelectionActive">#263359</Color>
+                    <Color x:Key="SelectionInactive">#2C3137</Color>
+                    <Color x:Key="RowHover">#21262C</Color>
+                    <Color x:Key="ButtonBg">#292E35</Color>
+                    <Color x:Key="ButtonHover">#33383F</Color>
+                    <Color x:Key="ButtonPressed">#21262C</Color>
+                    <Color x:Key="ButtonBorder">#43484F</Color>
+                    <Color x:Key="InputBg">#12161C</Color>
+                    <Color x:Key="InputBorder">#3D434A</Color>
+                    <Color x:Key="GridCategoryBg">#1C2127</Color>
+                    <Color x:Key="GridLine">#272C32</Color>
+                    <Color x:Key="StatusSuccess">#69C27E</Color>
+                    <Color x:Key="StatusWarning">#DD9C42</Color>
+                    <Color x:Key="StatusError">#FB817A</Color>
+                    <Color x:Key="StatusInfo">#52B5F4</Color>
+                    <Color x:Key="StatusSuccessBg">#15301B</Color>
+                    <Color x:Key="StatusWarningBg">#382409</Color>
+                    <Color x:Key="StatusErrorBg">#3E1E1C</Color>
+                    <Color x:Key="OverlayScrim">#8C000000</Color>
+                    <Color x:Key="SystemAccentColor">#4E6CCA</Color>
+                    <Color x:Key="SystemAccentColorLight1">#7694E9</Color>
+                    <Color x:Key="SystemAccentColorLight2">#90AEFE</Color>
+                    <Color x:Key="SystemAccentColorLight3">#B4C6FF</Color>
+                    <Color x:Key="SystemAccentColorDark1">#425EBB</Color>
+                    <Color x:Key="SystemAccentColorDark2">#364FA3</Color>
+                    <Color x:Key="SystemAccentColorDark3">#263359</Color>
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
-            <SolidColorBrush x:Key="MrDialogBackgroundBrush" Color="{DynamicResource MrDialogBackground}" />
-            <SolidColorBrush x:Key="MrDialogForegroundBrush" Color="{DynamicResource MrDialogForeground}" />
-            <SolidColorBrush x:Key="MrTreeBackgroundBrush" Color="{DynamicResource MrTreeBackground}" />
-            <SolidColorBrush x:Key="MrTreeForegroundBrush" Color="{DynamicResource MrTreeForeground}" />
-            <SolidColorBrush x:Key="MrSelectedActiveBrush" Color="{DynamicResource MrSelectedActive}" />
-            <SolidColorBrush x:Key="MrSelectedActiveFgBrush" Color="{DynamicResource MrSelectedActiveFg}" />
-            <SolidColorBrush x:Key="MrSelectedInactiveBrush" Color="{DynamicResource MrSelectedInactive}" />
-            <SolidColorBrush x:Key="MrTextBoxBackgroundBrush" Color="{DynamicResource MrTextBoxBackground}" />
-            <SolidColorBrush x:Key="MrBorderBrush" Color="{DynamicResource MrBorder}" />
-            <SolidColorBrush x:Key="MrAccentBrush" Color="{DynamicResource MrAccent}" />
-            <SolidColorBrush x:Key="MrTabBackgroundBrush" Color="{DynamicResource MrTabBackground}" />
-            <SolidColorBrush x:Key="MrTabItemBackgroundBrush" Color="{DynamicResource MrTabItemBackground}" />
-            <SolidColorBrush x:Key="MrButtonBackgroundBrush" Color="{DynamicResource MrButtonBackground}" />
-            <SolidColorBrush x:Key="MrButtonHoverBrush" Color="{DynamicResource MrButtonHover}" />
-            <SolidColorBrush x:Key="MrHeaderBackgroundBrush" Color="{DynamicResource MrHeaderBackground}" />
-            <SolidColorBrush x:Key="MrGridLineBrush" Color="{DynamicResource MrGridLine}" />
-            <SolidColorBrush x:Key="MrPanelTitleBackgroundBrush" Color="{DynamicResource MrPanelTitleBackground}" />
-            <SolidColorBrush x:Key="MrPanelTitleActiveBrush" Color="{DynamicResource MrPanelTitleActive}" />
+
+            <SolidColorBrush x:Key="SurfaceWindowBrush" Color="{DynamicResource SurfaceWindow}" />
+            <SolidColorBrush x:Key="SurfaceSidebarBrush" Color="{DynamicResource SurfaceSidebar}" />
+            <SolidColorBrush x:Key="SurfaceContentBrush" Color="{DynamicResource SurfaceContent}" />
+            <SolidColorBrush x:Key="SurfaceElevatedBrush" Color="{DynamicResource SurfaceElevated}" />
+            <SolidColorBrush x:Key="SurfaceTabBarBrush" Color="{DynamicResource SurfaceTabBar}" />
+            <SolidColorBrush x:Key="SurfaceHoverBrush" Color="{DynamicResource SurfaceHover}" />
+            <SolidColorBrush x:Key="SurfaceSessionBrush" Color="{DynamicResource SurfaceSession}" />
+            <SolidColorBrush x:Key="BorderSubtleBrush" Color="{DynamicResource BorderSubtle}" />
+            <SolidColorBrush x:Key="BorderStrongBrush" Color="{DynamicResource BorderStrong}" />
+            <SolidColorBrush x:Key="BorderOnElevatedBrush" Color="{DynamicResource BorderOnElevated}" />
+            <SolidColorBrush x:Key="TextPrimaryBrush" Color="{DynamicResource TextPrimary}" />
+            <SolidColorBrush x:Key="TextSecondaryBrush" Color="{DynamicResource TextSecondary}" />
+            <SolidColorBrush x:Key="TextTertiaryBrush" Color="{DynamicResource TextTertiary}" />
+            <SolidColorBrush x:Key="TextDisabledBrush" Color="{DynamicResource TextDisabled}" />
+            <SolidColorBrush x:Key="TextOnAccentBrush" Color="{DynamicResource TextOnAccent}" />
+            <SolidColorBrush x:Key="AccentBrush" Color="{DynamicResource Accent}" />
+            <SolidColorBrush x:Key="AccentHoverBrush" Color="{DynamicResource AccentHover}" />
+            <SolidColorBrush x:Key="AccentPressedBrush" Color="{DynamicResource AccentPressed}" />
+            <SolidColorBrush x:Key="AccentTextBrush" Color="{DynamicResource AccentText}" />
+            <SolidColorBrush x:Key="AccentSubtleBrush" Color="{DynamicResource AccentSubtle}" />
+            <SolidColorBrush x:Key="AccentSubtleHoverBrush" Color="{DynamicResource AccentSubtleHover}" />
+            <SolidColorBrush x:Key="FocusRingBrush" Color="{DynamicResource FocusRing}" />
+            <SolidColorBrush x:Key="SelectionActiveBrush" Color="{DynamicResource SelectionActive}" />
+            <SolidColorBrush x:Key="SelectionInactiveBrush" Color="{DynamicResource SelectionInactive}" />
+            <SolidColorBrush x:Key="RowHoverBrush" Color="{DynamicResource RowHover}" />
+            <SolidColorBrush x:Key="ButtonBgBrush" Color="{DynamicResource ButtonBg}" />
+            <SolidColorBrush x:Key="ButtonHoverBrush" Color="{DynamicResource ButtonHover}" />
+            <SolidColorBrush x:Key="ButtonPressedBrush" Color="{DynamicResource ButtonPressed}" />
+            <SolidColorBrush x:Key="ButtonOutlineBrush" Color="{DynamicResource ButtonBorder}" />
+            <SolidColorBrush x:Key="InputBgBrush" Color="{DynamicResource InputBg}" />
+            <SolidColorBrush x:Key="InputBorderBrush" Color="{DynamicResource InputBorder}" />
+            <SolidColorBrush x:Key="GridCategoryBgBrush" Color="{DynamicResource GridCategoryBg}" />
+            <SolidColorBrush x:Key="GridLineBrush" Color="{DynamicResource GridLine}" />
+            <SolidColorBrush x:Key="StatusSuccessBrush" Color="{DynamicResource StatusSuccess}" />
+            <SolidColorBrush x:Key="StatusWarningBrush" Color="{DynamicResource StatusWarning}" />
+            <SolidColorBrush x:Key="StatusErrorBrush" Color="{DynamicResource StatusError}" />
+            <SolidColorBrush x:Key="StatusInfoBrush" Color="{DynamicResource StatusInfo}" />
+            <SolidColorBrush x:Key="OverlayScrimBrush" Color="{DynamicResource OverlayScrim}" />
+
+            <!-- Fluent resource overrides: stock controls follow the system -->
+            <SolidColorBrush x:Key="TreeViewItemBackgroundSelected" Color="{DynamicResource SelectionActive}" />
+            <SolidColorBrush x:Key="TreeViewItemBackgroundSelectedPointerOver" Color="{DynamicResource AccentSubtleHover}" />
+            <SolidColorBrush x:Key="TreeViewItemBackgroundSelectedPressed" Color="{DynamicResource AccentSubtleHover}" />
+            <SolidColorBrush x:Key="TreeViewItemBackgroundPointerOver" Color="{DynamicResource RowHover}" />
+            <SolidColorBrush x:Key="TreeViewItemBackgroundPressed" Color="{DynamicResource RowHover}" />
+            <SolidColorBrush x:Key="TreeViewItemForegroundSelected" Color="{DynamicResource TextPrimary}" />
+            <SolidColorBrush x:Key="TreeViewItemForegroundSelectedPointerOver" Color="{DynamicResource TextPrimary}" />
+            <SolidColorBrush x:Key="TreeViewItemForegroundSelectedPressed" Color="{DynamicResource TextPrimary}" />
+            <SolidColorBrush x:Key="ListBoxItemBackgroundSelected" Color="{DynamicResource SelectionActive}" />
+            <SolidColorBrush x:Key="ListBoxItemBackgroundPointerOver" Color="{DynamicResource RowHover}" />
+            <SolidColorBrush x:Key="ListBoxItemForegroundSelected" Color="{DynamicResource TextPrimary}" />
+            <SolidColorBrush x:Key="MenuFlyoutPresenterBackground" Color="{DynamicResource SurfaceElevated}" />
+            <SolidColorBrush x:Key="MenuFlyoutPresenterBorderBrush" Color="{DynamicResource BorderOnElevated}" />
+            <SolidColorBrush x:Key="MenuFlyoutItemBackgroundPointerOver" Color="{DynamicResource AccentSubtle}" />
+            <SolidColorBrush x:Key="MenuFlyoutItemForegroundPointerOver" Color="{DynamicResource TextPrimary}" />
+            <SolidColorBrush x:Key="TextControlBackground" Color="{DynamicResource InputBg}" />
+            <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="{DynamicResource InputBg}" />
+            <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="{DynamicResource InputBg}" />
+            <SolidColorBrush x:Key="TextControlBorderBrush" Color="{DynamicResource InputBorder}" />
+            <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="{DynamicResource BorderStrong}" />
+            <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="{DynamicResource FocusRing}" />
+            <SolidColorBrush x:Key="TextControlPlaceholderForeground" Color="{DynamicResource TextTertiary}" />
+            <SolidColorBrush x:Key="ComboBoxBackground" Color="{DynamicResource InputBg}" />
+            <SolidColorBrush x:Key="ComboBoxBorderBrush" Color="{DynamicResource InputBorder}" />
+            <SolidColorBrush x:Key="ComboBoxDropDownBackground" Color="{DynamicResource SurfaceElevated}" />
+            <SolidColorBrush x:Key="ComboBoxDropDownBorderBrush" Color="{DynamicResource BorderOnElevated}" />
+            <SolidColorBrush x:Key="ButtonBackground" Color="{DynamicResource ButtonBg}" />
+            <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="{DynamicResource ButtonHover}" />
+            <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="{DynamicResource ButtonPressed}" />
+            <SolidColorBrush x:Key="ButtonBorderBrush" Color="{DynamicResource ButtonBorder}" />
+            <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="{DynamicResource BorderStrong}" />
+            <SolidColorBrush x:Key="ButtonForeground" Color="{DynamicResource TextPrimary}" />
+            <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillChecked" Color="{DynamicResource Accent}" />
+            <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeChecked" Color="{DynamicResource Accent}" />
+            <SolidColorBrush x:Key="SystemControlHighlightAccentBrush" Color="{DynamicResource Accent}" />
+            <SolidColorBrush x:Key="TabItemHeaderSelectedPipeFill" Color="{DynamicResource Accent}" />
+            <SolidColorBrush x:Key="ScrollBarThumbFill" Color="{DynamicResource BorderStrong}" Opacity="0.7" />
+            <SolidColorBrush x:Key="ScrollBarThumbFillPointerOver" Color="{DynamicResource TextTertiary}" Opacity="0.9" />
+            <SolidColorBrush x:Key="ScrollBarTrackFill" Color="Transparent" />
+            <SolidColorBrush x:Key="ScrollBarTrackFillPointerOver" Color="{DynamicResource SurfaceHover}" />
+            <SolidColorBrush x:Key="ToolTipBackground" Color="{DynamicResource SurfaceElevated}" />
+            <SolidColorBrush x:Key="ToolTipBorderBrush" Color="{DynamicResource BorderOnElevated}" />
+            <SolidColorBrush x:Key="ToolTipForeground" Color="{DynamicResource TextPrimary}" />
+            <SolidColorBrush x:Key="SystemControlForegroundBaseHighBrush" Color="{DynamicResource TextPrimary}" />
+            <SolidColorBrush x:Key="GridSplitterBackground" Color="Transparent" />
         </ResourceDictionary>
     </Application.Resources>
 
     <Application.Styles>
         <FluentTheme DensityStyle="Compact" />
 
-        <!-- WinForms-like compact look -->
+        <!-- ===== global ===== -->
         <Style Selector="Window">
-            <Setter Property="Background" Value="{DynamicResource MrDialogBackgroundBrush}" />
-            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceWindowBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="UseLayoutRounding" Value="True" />
         </Style>
+        <Style Selector="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        </Style>
+        <Style Selector="TextBlock.secondary">
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+        </Style>
+        <Style Selector="TextBlock.caption">
+            <Setter Property="Foreground" Value="{DynamicResource TextTertiaryBrush}" />
+            <Setter Property="FontSize" Value="11" />
+        </Style>
+        <Style Selector="c|Icon">
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+        </Style>
+        <Style Selector="c|Icon.accent">
+            <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}" />
+        </Style>
+        <Style Selector="c|Icon.success">
+            <Setter Property="Foreground" Value="{DynamicResource StatusSuccessBrush}" />
+        </Style>
+        <Style Selector="c|Icon.warning">
+            <Setter Property="Foreground" Value="{DynamicResource StatusWarningBrush}" />
+        </Style>
+        <Style Selector="c|Icon.error">
+            <Setter Property="Foreground" Value="{DynamicResource StatusErrorBrush}" />
+        </Style>
+        <Style Selector="c|Icon.info">
+            <Setter Property="Foreground" Value="{DynamicResource StatusInfoBrush}" />
+        </Style>
+
+        <!-- ===== menus ===== -->
         <Style Selector="Menu">
-            <Setter Property="Background" Value="{DynamicResource MrDialogBackgroundBrush}" />
-            <Setter Property="Height" Value="24" />
-            <Setter Property="Padding" Value="0" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceWindowBrush}" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Padding" Value="4,0" />
         </Style>
         <Style Selector="Menu > MenuItem">
-            <Setter Property="Padding" Value="8,0" />
-            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="CornerRadius" Value="5" />
+        </Style>
+        <Style Selector="Menu > MenuItem:selected /template/ Border#PART_LayoutRoot">
+            <Setter Property="Background" Value="{DynamicResource AccentSubtleBrush}" />
         </Style>
         <Style Selector="MenuItem">
-            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Height" Value="26" />
+            <Setter Property="CornerRadius" Value="4" />
         </Style>
         <Style Selector="MenuItem /template/ ContentPresenter#PART_HeaderPresenter">
             <Setter Property="Margin" Value="0" />
         </Style>
-        <!-- dialog buttons: macOS-like, primary action filled with the accent colour -->
+        <Style Selector="MenuItem:selected /template/ Border#PART_LayoutRoot">
+            <Setter Property="Background" Value="{DynamicResource AccentSubtleBrush}" />
+        </Style>
+        <Style Selector="MenuItem:disabled /template/ ContentPresenter#PART_HeaderPresenter">
+            <Setter Property="Foreground" Value="{DynamicResource TextDisabledBrush}" />
+        </Style>
+        <Style Selector="MenuItem:disabled c|Icon">
+            <Setter Property="Foreground" Value="{DynamicResource TextDisabledBrush}" />
+        </Style>
+        <Style Selector="MenuFlyoutPresenter, ContextMenu">
+            <Setter Property="Background" Value="{DynamicResource SurfaceElevatedBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderOnElevatedBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="4" />
+        </Style>
+        <Style Selector="Separator">
+            <Setter Property="Background" Value="{DynamicResource BorderSubtleBrush}" />
+            <Setter Property="Margin" Value="8,4" />
+            <Setter Property="Height" Value="1" />
+        </Style>
+
+        <!-- ===== toolbar buttons ===== -->
+        <Style Selector="Button.tool, ToggleButton.tool">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="1,0" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Width" Value="26" />
+            <Setter Property="Height" Value="26" />
+            <Setter Property="CornerRadius" Value="5" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.tool:pointerover /template/ ContentPresenter#PART_ContentPresenter, ToggleButton.tool:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource ButtonHoverBrush}" />
+        </Style>
+        <Style Selector="Button.tool:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource ButtonPressedBrush}" />
+        </Style>
+        <Style Selector="ToggleButton.tool:checked /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource AccentSubtleBrush}" />
+        </Style>
+        <Style Selector="ToggleButton.tool:checked c|Icon">
+            <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}" />
+        </Style>
+        <Style Selector="Button.tool.wide">
+            <Setter Property="Width" Value="NaN" />
+            <Setter Property="Padding" Value="8,0" />
+        </Style>
+
+        <!-- ===== dialog buttons ===== -->
         <Style Selector="Button.dialog">
             <Setter Property="MinWidth" Value="88" />
             <Setter Property="Height" Value="28" />
             <Setter Property="Padding" Value="14,0" />
             <Setter Property="CornerRadius" Value="6" />
-            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontSize" Value="13" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
-            <Setter Property="Background" Value="{DynamicResource MrButtonBackgroundBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource MrBorderBrush}" />
+            <Setter Property="Background" Value="{DynamicResource ButtonBgBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ButtonOutlineBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-        </Style>
-        <Style Selector="Button.dialog.primary">
-            <Setter Property="Background" Value="{DynamicResource MrAccentBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource MrAccentBrush}" />
-            <Setter Property="Foreground" Value="White" />
-        </Style>
-        <Style Selector="Button.dialog.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-            <Setter Property="Background" Value="#1E8AD6" />
-            <Setter Property="Foreground" Value="White" />
-        </Style>
-        <Style Selector="Button.dialog.primary:pressed /template/ ContentPresenter#PART_ContentPresenter">
-            <Setter Property="Background" Value="#0B5E9E" />
-            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
         </Style>
         <Style Selector="Button.dialog:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-            <Setter Property="Background" Value="{DynamicResource MrButtonHoverBrush}" />
+            <Setter Property="Background" Value="{DynamicResource ButtonHoverBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderStrongBrush}" />
+        </Style>
+        <Style Selector="Button.dialog:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource ButtonPressedBrush}" />
+        </Style>
+        <Style Selector="Button.dialog.primary">
+            <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextOnAccentBrush}" />
+        </Style>
+        <Style Selector="Button.dialog.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource AccentHoverBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentHoverBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextOnAccentBrush}" />
+        </Style>
+        <Style Selector="Button.dialog.primary:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource AccentPressedBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextOnAccentBrush}" />
+        </Style>
+        <Style Selector="Button.dialog:disabled /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Foreground" Value="{DynamicResource TextDisabledBrush}" />
+        </Style>
+
+        <!-- ===== inputs ===== -->
+        <Style Selector="TextBox">
+            <Setter Property="MinHeight" Value="26" />
+            <Setter Property="CornerRadius" Value="5" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Padding" Value="8,0" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="ComboBox">
+            <Setter Property="MinHeight" Value="26" />
+            <Setter Property="CornerRadius" Value="5" />
+            <Setter Property="FontSize" Value="13" />
         </Style>
         <Style Selector="CheckBox">
-            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontSize" Value="13" />
             <Setter Property="MinHeight" Value="24" />
         </Style>
         <Style Selector="AutoCompleteBox.quick /template/ TextBox#PART_TextBox">
-            <Setter Property="MinHeight" Value="22" />
-            <Setter Property="Height" Value="22" />
-            <Setter Property="Padding" Value="4,0" />
+            <Setter Property="MinHeight" Value="24" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="Padding" Value="8,0" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="FontSize" Value="12" />
-            <Setter Property="CornerRadius" Value="2" />
+            <Setter Property="CornerRadius" Value="5" />
         </Style>
-        <Style Selector="Button.tool">
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Padding" Value="3" />
-            <Setter Property="Margin" Value="1,0" />
-            <Setter Property="MinWidth" Value="0" />
-            <Setter Property="MinHeight" Value="0" />
-            <Setter Property="Width" Value="24" />
-            <Setter Property="Height" Value="24" />
-            <Setter Property="VerticalAlignment" Value="Center" />
-        </Style>
-        <Style Selector="Button.tool:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="{DynamicResource MrButtonHoverBrush}" />
-        </Style>
-        <Style Selector="ToggleButton.tool">
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Padding" Value="3" />
-            <Setter Property="Margin" Value="1,0" />
-            <Setter Property="MinWidth" Value="0" />
-            <Setter Property="MinHeight" Value="0" />
-            <Setter Property="Width" Value="24" />
-            <Setter Property="Height" Value="24" />
-        </Style>
-        <Style Selector="ToggleButton.tool:checked /template/ ContentPresenter">
-            <Setter Property="Background" Value="{DynamicResource MrSelectedInactiveBrush}" />
-        </Style>
+
+        <!-- ===== panels ===== -->
         <Style Selector="Border.panelTitle">
-            <Setter Property="Background" Value="{DynamicResource MrPanelTitleBackgroundBrush}" />
-            <Setter Property="Height" Value="22" />
-            <Setter Property="Padding" Value="6,0" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceSidebarBrush}" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Padding" Value="10,0" />
         </Style>
         <Style Selector="Border.panelTitle TextBlock">
             <Setter Property="VerticalAlignment" Value="Center" />
-            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="LetterSpacing" Value="0.6" />
         </Style>
+        <Style Selector="Border.panelToolbar">
+            <Setter Property="Background" Value="{DynamicResource SurfaceSidebarBrush}" />
+            <Setter Property="Height" Value="30" />
+            <Setter Property="Padding" Value="6,0" />
+        </Style>
+        <Style Selector="Border.panelBody">
+            <Setter Property="Background" Value="{DynamicResource SurfaceContentBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="ClipToBounds" Value="True" />
+        </Style>
+        <Style Selector="Border.divider">
+            <Setter Property="Width" Value="1" />
+            <Setter Property="Height" Value="16" />
+            <Setter Property="Margin" Value="4,0" />
+            <Setter Property="Background" Value="{DynamicResource BorderSubtleBrush}" />
+        </Style>
+
+        <!-- ===== tree ===== -->
         <Style Selector="TreeView">
-            <Setter Property="Background" Value="{DynamicResource MrTreeBackgroundBrush}" />
-            <Setter Property="Foreground" Value="{DynamicResource MrTreeForegroundBrush}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="4" />
         </Style>
         <Style Selector="TreeViewItem">
-            <Setter Property="MinHeight" Value="20" />
-            <Setter Property="Padding" Value="2,0" />
-            <Setter Property="FontSize" Value="12" />
+            <Setter Property="MinHeight" Value="24" />
+            <Setter Property="Padding" Value="4,0" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
         </Style>
         <Style Selector="TreeViewItem /template/ Border#PART_LayoutRoot">
-            <Setter Property="MinHeight" Value="20" />
+            <Setter Property="MinHeight" Value="24" />
+            <Setter Property="CornerRadius" Value="4" />
         </Style>
         <Style Selector="TreeViewItem:selected /template/ Border#PART_LayoutRoot">
-            <Setter Property="Background" Value="{DynamicResource MrSelectedActiveBrush}" />
+            <Setter Property="Background" Value="{DynamicResource SelectionActiveBrush}" />
         </Style>
-        <Style Selector="TreeViewItem:selected /template/ Border#PART_LayoutRoot ContentPresenter#PART_HeaderPresenter">
-            <Setter Property="Foreground" Value="{DynamicResource MrSelectedActiveFgBrush}" />
+        <Style Selector="TreeViewItem:selected c|Icon">
+            <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}" />
         </Style>
+        <Style Selector="TreeViewItem /template/ ToggleButton#PART_ExpandCollapseChevron">
+            <Setter Property="Foreground" Value="{DynamicResource TextTertiaryBrush}" />
+        </Style>
+
+        <!-- ===== session tabs ===== -->
         <Style Selector="TabControl.documents">
-            <Setter Property="Background" Value="{DynamicResource MrTabBackgroundBrush}" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceTabBarBrush}" />
             <Setter Property="Padding" Value="0" />
         </Style>
         <Style Selector="TabControl.documents /template/ ItemsPresenter#PART_ItemsPresenter">
-            <Setter Property="Margin" Value="0" />
+            <Setter Property="Margin" Value="4,4,4,0" />
         </Style>
         <Style Selector="TabControl.documents TabItem">
-            <Setter Property="MinHeight" Value="24" />
-            <Setter Property="Height" Value="24" />
-            <Setter Property="Padding" Value="8,0,4,0" />
-            <Setter Property="Margin" Value="0,0,1,0" />
+            <Setter Property="MinHeight" Value="28" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Padding" Value="10,0,6,0" />
+            <Setter Property="Margin" Value="0,0,2,0" />
             <Setter Property="FontSize" Value="12" />
             <Setter Property="FontWeight" Value="Normal" />
-            <Setter Property="Background" Value="{DynamicResource MrTabBackgroundBrush}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="CornerRadius" Value="6,6,0,0" />
+        </Style>
+        <Style Selector="TabControl.documents TabItem:pointerover /template/ Border#PART_LayoutRoot">
+            <Setter Property="Background" Value="{DynamicResource SurfaceHoverBrush}" />
         </Style>
         <Style Selector="TabControl.documents TabItem:selected">
-            <Setter Property="Background" Value="{DynamicResource MrAccentBrush}" />
-            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceContentBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        </Style>
+        <Style Selector="TabControl.documents TabItem /template/ Border#PART_LayoutRoot">
+            <Setter Property="BorderThickness" Value="0,2,0,0" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="TabControl.documents TabItem:selected /template/ Border#PART_LayoutRoot">
+            <Setter Property="Background" Value="{DynamicResource SurfaceContentBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
         </Style>
         <Style Selector="TabControl.documents TabItem /template/ Border#PART_SelectedPipe">
             <Setter Property="IsVisible" Value="False" />
@@ -213,20 +479,41 @@
         <Style Selector="TabControl.documents TabItem /template/ ContentPresenter#PART_ContentPresenter">
             <Setter Property="Margin" Value="0" />
         </Style>
+        <Style Selector="Button.tabClose">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="6,0,0,0" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Width" Value="18" />
+            <Setter Property="Height" Value="18" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.tabClose:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource ButtonPressedBrush}" />
+        </Style>
+
+        <!-- ===== property grid editors ===== -->
         <Style Selector="TextBox.grid">
-            <Setter Property="MinHeight" Value="20" />
-            <Setter Property="Height" Value="20" />
-            <Setter Property="Padding" Value="3,1" />
+            <Setter Property="MinHeight" Value="22" />
+            <Setter Property="Height" Value="22" />
+            <Setter Property="Padding" Value="6,0" />
             <Setter Property="FontSize" Value="12" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="CornerRadius" Value="0" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
+        <Style Selector="TextBox.grid:focus /template/ Border#PART_BorderElement">
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="{DynamicResource AccentSubtleBrush}" />
+        </Style>
         <Style Selector="ComboBox.grid">
-            <Setter Property="MinHeight" Value="20" />
-            <Setter Property="Height" Value="20" />
-            <Setter Property="Padding" Value="3,0" />
+            <Setter Property="MinHeight" Value="22" />
+            <Setter Property="Height" Value="22" />
+            <Setter Property="Padding" Value="6,0" />
             <Setter Property="FontSize" Value="12" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Background" Value="Transparent" />
@@ -236,10 +523,21 @@
         <Style Selector="ComboBox.grid /template/ Border#Background">
             <Setter Property="Background" Value="Transparent" />
         </Style>
+
+        <!-- ===== notifications ===== -->
+        <Style Selector="ListBox.messages">
+            <Setter Property="Background" Value="{DynamicResource SurfaceContentBrush}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="4" />
+        </Style>
         <Style Selector="ListBox.messages ListBoxItem">
-            <Setter Property="MinHeight" Value="20" />
-            <Setter Property="Padding" Value="4,1" />
+            <Setter Property="MinHeight" Value="22" />
+            <Setter Property="Padding" Value="6,0" />
             <Setter Property="FontSize" Value="12" />
+            <Setter Property="CornerRadius" Value="4" />
+        </Style>
+        <Style Selector="GridSplitter">
+            <Setter Property="Background" Value="Transparent" />
         </Style>
     </Application.Styles>
 </Application>

@@ -69,6 +69,7 @@ public sealed unsafe class RdpSession : IDisposable
     public event Action<RemotePointer?>? PointerChanged;   // RDP thread; null = default cursor
     public event Action? PointerHidden;                    // RDP thread
     public event Action<string>? ClipboardTextReceived;    // RDP thread
+    public event Action? Reconnecting;                     // RDP thread; the connection dropped, auto-reconnect in progress
 
     /// <summary>Invoked on the UI thread; default accepts the certificate for this session only.</summary>
     public Func<CertificateInfo, Task<CertificateDecision>>? VerifyCertificate { get; set; }
@@ -95,6 +96,7 @@ public sealed unsafe class RdpSession : IDisposable
             on_pointer_set = (IntPtr)(delegate* unmanaged[Cdecl]<IntPtr, IntPtr, void>)&OnPointerSet,
             on_pointer_hidden = (IntPtr)(delegate* unmanaged[Cdecl]<IntPtr, void>)&OnPointerHidden,
             on_clipboard_text = (IntPtr)(delegate* unmanaged[Cdecl]<IntPtr, IntPtr, void>)&OnClipboardText,
+            on_reconnecting = (IntPtr)(delegate* unmanaged[Cdecl]<IntPtr, void>)&OnReconnecting,
         };
         _handle = Native.mr_session_create(ref cb);
         if (_handle == IntPtr.Zero)
@@ -330,6 +332,15 @@ public sealed unsafe class RdpSession : IDisposable
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void OnPointerHidden(IntPtr user) => From(user)?.PointerHidden?.Invoke();
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void OnReconnecting(IntPtr user)
+    {
+        var s = From(user);
+        if (s is null) return;
+        Volatile.Write(ref s._connected, 0);
+        s.Reconnecting?.Invoke();
+    }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void OnClipboardText(IntPtr user, IntPtr utf8) => From(user)?.ClipboardTextReceived?.Invoke(Str(utf8));

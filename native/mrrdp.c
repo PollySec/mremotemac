@@ -24,6 +24,9 @@
 #include <freerdp/channels/disp.h>
 #include <freerdp/client/cliprdr.h>
 #include <winpr/clipboard.h>
+#include <mach/mach_time.h>
+
+#define MR_RESIZE_MIN_INTERVAL_MS 500 /* like sdl-freerdp / xfreerdp */
 
 struct mr_session
 {
@@ -33,9 +36,12 @@ struct mr_session
 	pthread_t thread;
 	int thread_started;
 	volatile int connected;
-	DispClientContext* disp;
-	CliprdrClientContext* cliprdr;
-	wClipboard* clipboard;
+	DispClientContext* disp;     /* guarded by chan_lock */
+	CliprdrClientContext* cliprdr; /* guarded by chan_lock */
+	int disp_caps_ready;         /* guarded by chan_lock */
+	uint64_t last_layout_ms;
+	uint32_t last_layout_w, last_layout_h;
+	pthread_mutex_t chan_lock;
 	pthread_mutex_t clip_lock;
 	char* clip_local_text; /* text we announced to the remote side */
 	UINT32 remote_text_format; /* format id the remote side offered, 0 if none */
@@ -61,6 +67,14 @@ static mr_session* S(rdpContext* ctx)
 const char* mr_version(void)
 {
 	return freerdp_get_version_string();
+}
+
+static uint64_t mr_now_ms(void)
+{
+	static mach_timebase_info_data_t tb;
+	if (tb.denom == 0)
+		mach_timebase_info(&tb);
+	return mach_absolute_time() * tb.numer / tb.denom / 1000000ULL;
 }
 
 /* ---------- painting ---------- */
@@ -222,7 +236,10 @@ static BOOL mr_pointer_set_position(rdpContext* context, UINT32 x, UINT32 y)
 
 static UINT mr_cliprdr_send_format_list(mr_session* s)
 {
-	if (!s->cliprdr)
+	pthread_mutex_lock(&s->chan_lock);
+	CliprdrClientContext* clip = s->cliprdr;
+	pthread_mutex_unlock(&s->chan_lock);
+	if (!clip)
 		return CHANNEL_RC_OK;
 	CLIPRDR_FORMAT formats[2] = { 0 };
 	formats[0].formatId = CF_UNICODETEXT;
@@ -232,7 +249,7 @@ static UINT mr_cliprdr_send_format_list(mr_session* s)
 	list.common.msgFlags = 0;
 	list.numFormats = 2;
 	list.formats = formats;
-	return s->cliprdr->ClientFormatList(s->cliprdr, &list);
+	return clip->ClientFormatList(clip, &list);
 }
 
 static UINT mr_cliprdr_monitor_ready(CliprdrClientContext* ctx, const CLIPRDR_MONITOR_READY* ready)
@@ -392,12 +409,30 @@ int32_t mr_set_clipboard_text(mr_session* s, const char* utf8)
 
 /* ---------- channels ---------- */
 
+static UINT mr_disp_caps(DispClientContext* ctx, UINT32 maxMonitors, UINT32 factorA, UINT32 factorB)
+{
+	(void)maxMonitors;
+	(void)factorA;
+	(void)factorB;
+	mr_session* s = (mr_session*)ctx->custom;
+	pthread_mutex_lock(&s->chan_lock);
+	s->disp_caps_ready = 1;
+	pthread_mutex_unlock(&s->chan_lock);
+	return CHANNEL_RC_OK;
+}
+
 static void mr_on_channel_connected(void* context, const ChannelConnectedEventArgs* e)
 {
 	mr_session* s = S((rdpContext*)context);
 	if (strcmp(e->name, DISP_DVC_CHANNEL_NAME) == 0)
 	{
-		s->disp = (DispClientContext*)e->pInterface;
+		DispClientContext* d = (DispClientContext*)e->pInterface;
+		d->custom = s;
+		d->DisplayControlCaps = mr_disp_caps;
+		pthread_mutex_lock(&s->chan_lock);
+		s->disp = d;
+		s->disp_caps_ready = 0;
+		pthread_mutex_unlock(&s->chan_lock);
 	}
 	else if (strcmp(e->name, CLIPRDR_SVC_CHANNEL_NAME) == 0)
 	{
@@ -409,7 +444,9 @@ static void mr_on_channel_connected(void* context, const ChannelConnectedEventAr
 		c->ServerFormatListResponse = mr_cliprdr_server_format_list_response;
 		c->ServerFormatDataRequest = mr_cliprdr_server_format_data_request;
 		c->ServerFormatDataResponse = mr_cliprdr_server_format_data_response;
+		pthread_mutex_lock(&s->chan_lock);
 		s->cliprdr = c;
+		pthread_mutex_unlock(&s->chan_lock);
 	}
 	else
 	{
@@ -421,9 +458,18 @@ static void mr_on_channel_disconnected(void* context, const ChannelDisconnectedE
 {
 	mr_session* s = S((rdpContext*)context);
 	if (strcmp(e->name, DISP_DVC_CHANNEL_NAME) == 0)
+	{
+		pthread_mutex_lock(&s->chan_lock);
 		s->disp = NULL;
+		s->disp_caps_ready = 0;
+		pthread_mutex_unlock(&s->chan_lock);
+	}
 	else if (strcmp(e->name, CLIPRDR_SVC_CHANNEL_NAME) == 0)
+	{
+		pthread_mutex_lock(&s->chan_lock);
 		s->cliprdr = NULL;
+		pthread_mutex_unlock(&s->chan_lock);
+	}
 	else
 		freerdp_client_OnChannelDisconnectedEventHandler(context, e);
 }
@@ -444,9 +490,7 @@ static BOOL mr_pre_connect(freerdp* instance)
 		return FALSE;
 	if (PubSub_SubscribeChannelDisconnected(context->pubSub, mr_on_channel_disconnected) < 0)
 		return FALSE;
-
-	if (!freerdp_client_load_channels(instance))
-		return FALSE;
+	/* channels are loaded by FreeRDP itself through instance->LoadChannels after PreConnect (3.x) */
 	return TRUE;
 }
 
@@ -483,14 +527,21 @@ static BOOL mr_post_connect(freerdp* instance)
 	return TRUE;
 }
 
+/* Called before channels are torn down: release what PostConnect allocated. */
 static void mr_post_disconnect(freerdp* instance)
 {
 	rdpContext* context = instance->context;
 	mr_session* s = S(context);
 	s->connected = 0;
+	gdi_free(instance);
+}
+
+/* Called after all channel threads have stopped: release what PreConnect allocated. */
+static void mr_post_final_disconnect(freerdp* instance)
+{
+	rdpContext* context = instance->context;
 	PubSub_UnsubscribeChannelConnected(context->pubSub, mr_on_channel_connected);
 	PubSub_UnsubscribeChannelDisconnected(context->pubSub, mr_on_channel_disconnected);
-	gdi_free(instance);
 }
 
 static DWORD mr_verify_certificate_ex(freerdp* instance, const char* host, UINT16 port,
@@ -565,6 +616,7 @@ static BOOL mr_client_new(freerdp* instance, rdpContext* context)
 	instance->PreConnect = mr_pre_connect;
 	instance->PostConnect = mr_post_connect;
 	instance->PostDisconnect = mr_post_disconnect;
+	instance->PostFinalDisconnect = mr_post_final_disconnect;
 	instance->VerifyCertificateEx = mr_verify_certificate_ex;
 	instance->VerifyChangedCertificateEx = mr_verify_changed_certificate_ex;
 	instance->AuthenticateEx = mr_authenticate_ex;
@@ -615,6 +667,15 @@ static void* mr_thread_proc(void* arg)
 			break;
 		if (!freerdp_check_event_handles(context))
 		{
+			if (freerdp_settings_get_bool(context->settings, FreeRDP_AutoReconnectionEnabled) &&
+			    !freerdp_shall_disconnect_context(context))
+			{
+				s->connected = 0;
+				if (s->cb.on_reconnecting)
+					s->cb.on_reconnecting(s->cb.user);
+				if (client_auto_reconnect(instance))
+					continue;
+			}
 			result = freerdp_get_last_error(context);
 			break;
 		}
@@ -642,6 +703,7 @@ mr_session* mr_session_create(const mr_callbacks* callbacks)
 	if (callbacks)
 		s->cb = *callbacks;
 	pthread_mutex_init(&s->clip_lock, NULL);
+	pthread_mutex_init(&s->chan_lock, NULL);
 
 	RDP_CLIENT_ENTRY_POINTS ep = { 0 };
 	ep.Version = RDP_CLIENT_INTERFACE_VERSION;
@@ -656,6 +718,7 @@ mr_session* mr_session_create(const mr_callbacks* callbacks)
 	if (!context)
 	{
 		pthread_mutex_destroy(&s->clip_lock);
+		pthread_mutex_destroy(&s->chan_lock);
 		free(s);
 		return NULL;
 	}
@@ -673,6 +736,7 @@ void mr_session_destroy(mr_session* s)
 	if (s->context)
 		freerdp_client_context_free(s->context);
 	pthread_mutex_destroy(&s->clip_lock);
+	pthread_mutex_destroy(&s->chan_lock);
 	free(s->clip_local_text);
 	free(s);
 }
@@ -814,10 +878,21 @@ void mr_send_focus_in(mr_session* s, uint16_t toggle_flags)
 
 int32_t mr_resize_desktop(mr_session* s, uint32_t width, uint32_t height)
 {
-	if (!s || !s->connected || !s->disp)
+	if (!s || !s->connected)
 		return 0;
 	width &= ~1u; /* width must be even */
-	if (width < 200 || height < 200)
+	if (width < 200 || height < 200 || width > 8192 || height > 8192)
+		return 0;
+	pthread_mutex_lock(&s->chan_lock);
+	DispClientContext* disp = s->disp;
+	int ready = s->disp_caps_ready;
+	pthread_mutex_unlock(&s->chan_lock);
+	if (!disp || !ready)
+		return 0;
+	if (width == s->last_layout_w && height == s->last_layout_h)
+		return 1;
+	uint64_t now = mr_now_ms();
+	if (now - s->last_layout_ms < MR_RESIZE_MIN_INTERVAL_MS)
 		return 0;
 	DISPLAY_CONTROL_MONITOR_LAYOUT layout = { 0 };
 	layout.Flags = DISPLAY_CONTROL_MONITOR_PRIMARY;
@@ -830,5 +905,10 @@ int32_t mr_resize_desktop(mr_session* s, uint32_t width, uint32_t height)
 	layout.Orientation = ORIENTATION_LANDSCAPE;
 	layout.DesktopScaleFactor = 100;
 	layout.DeviceScaleFactor = 100;
-	return s->disp->SendMonitorLayout(s->disp, 1, &layout) == CHANNEL_RC_OK ? 1 : 0;
+	if (disp->SendMonitorLayout(disp, 1, &layout) != CHANNEL_RC_OK)
+		return 0;
+	s->last_layout_ms = now;
+	s->last_layout_w = width;
+	s->last_layout_h = height;
+	return 1;
 }

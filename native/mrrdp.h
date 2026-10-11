@@ -40,6 +40,8 @@ typedef void (*mr_on_pointer_free)(void* user, void* handle);
 /* handle == NULL means "default system cursor". */
 typedef void (*mr_on_pointer_set)(void* user, void* handle);
 typedef void (*mr_on_pointer_hidden)(void* user);
+/* The connection dropped and automatic reconnection is being attempted (requires AutoReconnectionEnabled). */
+typedef void (*mr_on_reconnecting)(void* user);
 /* Remote side announced new clipboard text (UTF-8). */
 typedef void (*mr_on_clipboard_text)(void* user, const char* utf8);
 
@@ -57,9 +59,13 @@ typedef struct {
 	mr_on_pointer_set on_pointer_set;
 	mr_on_pointer_hidden on_pointer_hidden;
 	mr_on_clipboard_text on_clipboard_text;
+	mr_on_reconnecting on_reconnecting;
 } mr_callbacks;
 
 MRRDP_API const char* mr_version(void);
+
+/* Windows keyboard layout id (e.g. 0x041D Swedish) for the current macOS input source, 0 if unknown. */
+MRRDP_API uint32_t mr_detect_keyboard_layout(void);
 
 MRRDP_API mr_session* mr_session_create(const mr_callbacks* callbacks);
 MRRDP_API void mr_session_destroy(mr_session* s);
@@ -89,7 +95,7 @@ MRRDP_API void mr_send_unicode(mr_session* s, int32_t down, uint16_t code);
 MRRDP_API void mr_send_sync(mr_session* s, uint32_t toggle_flags);
 MRRDP_API void mr_send_focus_in(mr_session* s, uint16_t toggle_flags);
 
-/* Dynamic resolution (requires /dynamic-resolution). Return 1 if sent. */
+/* Dynamic resolution (requires /dynamic-resolution). Return 1 if sent, 0 if not possible yet (no caps, rate limit, unchanged). */
 MRRDP_API int32_t mr_resize_desktop(mr_session* s, uint32_t width, uint32_t height);
 
 /* Clipboard: announce local text to remote. */

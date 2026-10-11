@@ -60,7 +60,7 @@ public sealed partial class PropertyRow : GridRow
 
     public IEnumerable<object> EnumValues => IsEnum ? Enum.GetValues(EditorType).Cast<object>() : Array.Empty<object>();
     public static IEnumerable<string> BoolValues { get; } = new[] { "True", "False" };
-    public static IEnumerable<string> IconValues => ImageCache.AvailableIcons();
+    public static IReadOnlyList<string> IconValues => IconNames.Selectable;
 
     public object? Value
     {
@@ -137,13 +137,14 @@ public sealed class PropertyGrid : UserControl
     public PropertyGrid()
     {
         _items = new ItemsControl { ItemTemplate = BuildTemplate() };
-        _helpTitle = new TextBlock { FontWeight = FontWeight.Bold, FontSize = 12, Margin = new Thickness(6, 4, 6, 0) };
-        _helpText = new TextBlock { FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(6, 2, 6, 4) };
+        _helpTitle = new TextBlock { FontWeight = FontWeight.SemiBold, FontSize = 12, Margin = new Thickness(10, 6, 10, 0) };
+        _helpText = new TextBlock { FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(10, 2, 10, 6) };
+        _helpText.Classes.Add("secondary");
         var help = new Border
         {
             BorderThickness = new Thickness(0, 1, 0, 0),
-            [!Border.BorderBrushProperty] = this.GetResourceObservable("MrBorderBrush").ToBinding(),
-            [!Border.BackgroundProperty] = this.GetResourceObservable("MrDialogBackgroundBrush").ToBinding(),
+            [!Border.BorderBrushProperty] = this.GetResourceObservable("BorderSubtleBrush").ToBinding(),
+            [!Border.BackgroundProperty] = this.GetResourceObservable("GridCategoryBgBrush").ToBinding(),
             MinHeight = 52,
             Child = new StackPanel { Children = { _helpTitle, _helpText } }
         };
@@ -154,7 +155,7 @@ public sealed class PropertyGrid : UserControl
         dock.Children.Add(scroll);
         Content = new Border
         {
-            [!Border.BackgroundProperty] = this.GetResourceObservable("MrTextBoxBackgroundBrush").ToBinding(),
+            [!Border.BackgroundProperty] = this.GetResourceObservable("SurfaceContentBrush").ToBinding(),
             Child = dock
         };
     }
@@ -230,19 +231,21 @@ public sealed class PropertyGrid : UserControl
 
     private Border BuildCategory(CategoryRow c)
     {
-        var arrow = new TextBlock { Text = c.IsExpanded ? "⊟" : "⊞", Width = 14, FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
-        var panel = new StackPanel { Orientation = Orientation.Horizontal, Children = { arrow, new TextBlock { Text = c.Name, FontWeight = FontWeight.Bold, VerticalAlignment = VerticalAlignment.Center } } };
+        var arrow = new Icon { Glyph = c.IsExpanded ? "chevron-down" : "chevron-right", Size = 12, Margin = new Thickness(0, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center };
+        var title = new TextBlock { Text = c.Name.ToUpperInvariant(), FontSize = 11, FontWeight = FontWeight.SemiBold, LetterSpacing = 0.6, VerticalAlignment = VerticalAlignment.Center };
+        title.Classes.Add("secondary");
+        var panel = new StackPanel { Orientation = Orientation.Horizontal, Children = { arrow, title } };
         var border = new Border
         {
-            Height = 20,
-            Padding = new Thickness(4, 0),
+            Height = 24,
+            Padding = new Thickness(6, 0),
             Child = panel,
-            [!Border.BackgroundProperty] = this.GetResourceObservable("MrHeaderBackgroundBrush").ToBinding()
+            [!Border.BackgroundProperty] = this.GetResourceObservable("GridCategoryBgBrush").ToBinding()
         };
         border.PointerPressed += (_, _) =>
         {
             c.IsExpanded = !c.IsExpanded;
-            arrow.Text = c.IsExpanded ? "⊟" : "⊞";
+            arrow.Glyph = c.IsExpanded ? "chevron-down" : "chevron-right";
             foreach (var r in c.Properties)
             {
                 var container = _items.ContainerFromItem(r);
@@ -254,22 +257,24 @@ public sealed class PropertyGrid : UserControl
 
     private Grid BuildProperty(PropertyRow p)
     {
-        var grid = new Grid { Height = 20 };
+        var grid = new Grid { Height = 22 };
         grid.ColumnDefinitions.Add(new ColumnDefinition(new GridLength(NameColumnWidth)));
         grid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+        var label = new TextBlock { Text = p.DisplayName, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, FontStyle = p.FontStyle, TextTrimming = TextTrimming.CharacterEllipsis };
+        label.Classes.Add("secondary");
         var name = new Border
         {
-            Padding = new Thickness(16, 0, 4, 0),
+            Padding = new Thickness(18, 0, 4, 0),
             BorderThickness = new Thickness(0, 0, 1, 1),
-            [!Border.BorderBrushProperty] = this.GetResourceObservable("MrGridLineBrush").ToBinding(),
-            [!Border.BackgroundProperty] = this.GetResourceObservable("MrTextBoxBackgroundBrush").ToBinding(),
-            Child = new TextBlock { Text = p.DisplayName, VerticalAlignment = VerticalAlignment.Center, FontStyle = p.FontStyle, TextTrimming = TextTrimming.CharacterEllipsis }
+            [!Border.BorderBrushProperty] = this.GetResourceObservable("GridLineBrush").ToBinding(),
+            [!Border.BackgroundProperty] = this.GetResourceObservable("SurfaceContentBrush").ToBinding(),
+            Child = label
         };
         Grid.SetColumn(name, 0);
         var editorBorder = new Border
         {
             BorderThickness = new Thickness(0, 0, 0, 1),
-            [!Border.BorderBrushProperty] = this.GetResourceObservable("MrGridLineBrush").ToBinding(),
+            [!Border.BorderBrushProperty] = this.GetResourceObservable("GridLineBrush").ToBinding(),
             Child = BuildEditor(p)
         };
         Grid.SetColumn(editorBorder, 1);
@@ -306,7 +311,7 @@ public sealed class PropertyGrid : UserControl
                 Orientation = Orientation.Horizontal,
                 Children =
                 {
-                    new Image { Source = ImageCache.ConnectionIcon(s), Width = 16, Height = 16, Margin = new Thickness(0, 0, 6, 0) },
+                    new Icon { Glyph = IconNames.ForConnectionIcon(s), Size = 14, Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center },
                     new TextBlock { Text = s, VerticalAlignment = VerticalAlignment.Center }
                 }
             });

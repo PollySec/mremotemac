@@ -8,8 +8,8 @@ mkdir -p $OUT
 clang -dynamiclib -arch arm64 -mmacosx-version-min=14.0 -O2 -fvisibility=hidden \
   -Wall -Wno-unused-parameter \
   -I$DEPS/include/freerdp3 -I$DEPS/include/winpr3 \
-  $HERE/mrrdp.c \
-  -L$DEPS/lib -lfreerdp-client3 -lfreerdp3 -lwinpr3 \
+  $HERE/mrrdp.c $HERE/kbd_mac.c \
+  -L$DEPS/lib -lfreerdp-client3 -lfreerdp3 -lwinpr3 -framework Carbon \
   -Wl,-rpath,@loader_path \
   -install_name @rpath/libmrrdp.dylib \
   -o $OUT/libmrrdp.dylib

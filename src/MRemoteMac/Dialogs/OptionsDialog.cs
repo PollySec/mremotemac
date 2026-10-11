@@ -16,7 +16,7 @@ public static class OptionsDialog
         var autosave = new CheckBox { Content = "Save connection file automatically after changes", IsChecked = s.AutoSaveOnChange };
         var closeTab = new CheckBox { Content = "Close tab when the remote session ends cleanly", IsChecked = s.CloseTabOnDisconnect };
         var gfx = new CheckBox { Content = "Use RDP graphics pipeline (RemoteFX / progressive codec)", IsChecked = s.UseGfx };
-        var dark = new CheckBox { Content = "Dark theme (vs2015dark)", IsChecked = s.DarkTheme };
+        var dark = new CheckBox { Content = "Dark appearance", IsChecked = s.DarkTheme };
 
         var body = new StackPanel { Spacing = 8, Width = 460 };
         body.Children.Add(new TextBlock { Text = "Keyboard", FontWeight = Avalonia.Media.FontWeight.Bold });
@@ -41,6 +41,7 @@ public static class OptionsDialog
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
             Content = new StackPanel { Margin = new Thickness(16), Children = { body, buttons } }
         };
+        TestMode.Prepare(w);
         var saved = false;
         ok.Click += (_, _) =>
         {

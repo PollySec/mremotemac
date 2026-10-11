@@ -23,9 +23,11 @@ internal static unsafe partial class Native
         public IntPtr on_pointer_set;
         public IntPtr on_pointer_hidden;
         public IntPtr on_clipboard_text;
+        public IntPtr on_reconnecting;
     }
 
     [LibraryImport(Lib)] public static partial IntPtr mr_version();
+    [LibraryImport(Lib)] public static partial uint mr_detect_keyboard_layout();
     [LibraryImport(Lib)] public static partial IntPtr mr_session_create(ref Callbacks callbacks);
     [LibraryImport(Lib)] public static partial void mr_session_destroy(IntPtr s);
     [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)] public static partial int mr_set_string(IntPtr s, string key, string? value);
@@ -44,6 +46,13 @@ internal static unsafe partial class Native
     [LibraryImport(Lib)] public static partial void mr_send_focus_in(IntPtr s, ushort toggleFlags);
     [LibraryImport(Lib)] public static partial int mr_resize_desktop(IntPtr s, uint width, uint height);
     [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)] public static partial int mr_set_clipboard_text(IntPtr s, string? utf8);
+
+    /// <summary>Windows keyboard layout id of the current macOS input source (0 if unknown).</summary>
+    public static uint DetectKeyboardLayout()
+    {
+        try { return mr_detect_keyboard_layout(); }
+        catch (DllNotFoundException) { return 0; }
+    }
 
     public static string Version()
     {

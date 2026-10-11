@@ -19,7 +19,7 @@ public static class Dialogs
             if (b.IsDefault) b.Classes.Add("primary");
             buttonRow.Children.Add(b);
         }
-        return new Window
+        var window = new Window
         {
             Title = title,
             SizeToContent = SizeToContent.WidthAndHeight,
@@ -29,6 +29,8 @@ public static class Dialogs
             Content = new StackPanel { Margin = new Thickness(20, 16, 20, 16), MinWidth = 380, Children = { body, buttonRow } },
             Icon = AppIcon.Window
         };
+        Services.TestMode.Prepare(window);
+        return window;
     }
 
     private static TextBlock Heading(string text) => new() { Text = text, FontWeight = FontWeight.SemiBold, FontSize = 13, TextWrapping = TextWrapping.Wrap, MaxWidth = 460, Margin = new Thickness(0, 0, 0, 6) };

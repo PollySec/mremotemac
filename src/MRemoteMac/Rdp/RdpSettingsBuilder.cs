@@ -11,6 +11,8 @@ public sealed class RdpClientOptions
     public bool UseGfx { get; set; } = true;
     public int ConnectTimeoutMs { get; set; } = 15000;
     public uint? KeyboardLayout { get; set; }
+    public int AutoReconnectMaxRetries { get; set; } = 5;
+    public string ConfigPath { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Library", "Application Support", "mRemoteMac", "freerdp");
 }
 
 /// <summary>Translates an mRemoteNG ConnectionInfo into FreeRDP settings on an RdpSession.</summary>
@@ -44,7 +46,8 @@ public static class RdpSettingsBuilder
 
         s.SetUInt32("DesktopWidth", (uint)Math.Max(200, desktopWidth & ~1));
         s.SetUInt32("DesktopHeight", (uint)Math.Max(200, desktopHeight));
-        s.SetUInt32("ColorDepth", (uint)(int)Eff<RdpColors>(nameof(ConnectionInfo.Colors)));
+        // the RDP8 graphics pipeline is 32bpp only; honour the configured depth on the legacy path
+        s.SetUInt32("ColorDepth", opt.UseGfx ? 32u : (uint)(int)Eff<RdpColors>(nameof(ConnectionInfo.Colors)));
 
         s.SetBool("ConsoleSession", connectToConsoleOverride || Eff<bool>(nameof(ConnectionInfo.UseConsoleSession)));
 
@@ -66,8 +69,15 @@ public static class RdpSettingsBuilder
         s.SetBool("CompressionEnabled", true);
         s.SetUInt32("TcpConnectTimeout", (uint)opt.ConnectTimeoutMs);
 
-        var layout = opt.KeyboardLayout ?? (uint)CultureInfo.CurrentCulture.KeyboardLayoutId;
+        // keyboard layout: macOS input source first (e.g. Swedish 0x041D), then the .NET culture as fallback
+        var layout = opt.KeyboardLayout ?? Native.DetectKeyboardLayout();
+        if (layout == 0) layout = (uint)CultureInfo.CurrentCulture.KeyboardLayoutId;
         if (layout != 0) s.SetUInt32("KeyboardLayout", layout);
+
+        // keep every channel callback on the RDP thread (otherwise rdpgfx/disp run on drdynvc's own thread)
+        s.SetBool("SynchronousDynamicChannels", true);
+        // trusted certificates live with the app's own data instead of ~/.config/freerdp
+        s.SetString("ConfigPath", opt.ConfigPath);
 
         var startProgram = Eff<string>(nameof(ConnectionInfo.RdpStartProgram));
         if (!string.IsNullOrWhiteSpace(startProgram))
@@ -85,7 +95,15 @@ public static class RdpSettingsBuilder
         args.Add("/network:auto");
         if (c.GetEffective<bool>(nameof(ConnectionInfo.AutomaticResize)) || Eff<RdpResolutions>(nameof(ConnectionInfo.Resolution)) == RdpResolutions.FitToWindow)
             args.Add("/dynamic-resolution");
-        args.Add(opt.UseGfx ? "/gfx:RFX,progressive" : "-gfx");
+        if (opt.UseGfx)
+            args.Add("/gfx:RFX,progressive"); // progressive RemoteFX adapts to WAN bandwidth; no H.264 decoder is bundled
+        else
+        {
+            args.Add("-gfx");
+            args.Add("/cache:bitmap:on,glyph:on,offscreen:on");
+        }
+        args.Add("+auto-reconnect");
+        args.Add($"/auto-reconnect-max-retries:{opt.AutoReconnectMaxRetries}");
 
         // redirection
         switch (Eff<RdpSounds>(nameof(ConnectionInfo.RedirectSound)))

@@ -45,9 +45,10 @@ public sealed partial class MainWindow : Window
         Height = _settings.WindowHeight;
         if (_settings.WindowX is { } x && _settings.WindowY is { } y) Position = new PixelPoint(x, y);
         if (_settings.WindowMaximized) WindowState = WindowState.Maximized;
+        TestMode.Prepare(this);
         MainGrid.ColumnDefinitions[0].Width = new GridLength(_settings.TreePaneWidth);
         LeftGrid.RowDefinitions[2].Height = new GridLength(_settings.ConfigPaneHeight);
-        MessagesList.Height = _settings.NotificationsHeight;
+        NotificationsBody.Height = _settings.NotificationsHeight;
         ApplyTheme();
         QuickConnectBar.IsVisible = _settings.ShowQuickConnectToolbar;
         MenuViewQuickConnect.IsChecked = _settings.ShowQuickConnectToolbar;
@@ -69,8 +70,8 @@ public sealed partial class MainWindow : Window
         };
         Notifications.Instance.MessageAdded += m =>
         {
-            NotificationsTitle.Text = $"Notifications ({Notifications.Instance.Messages.Count})";
-            if (m.Class == MessageClass.Error && !MessagesList.IsVisible) NotificationsTitle.Text += "  —  " + m.Text;
+            UpdateNotificationsTitle();
+            if (m.Class == MessageClass.Error && !NotificationsBody.IsVisible) NotificationsTitle.Text += "   ·   " + m.Text;
         };
 
         // Sessions ▸ Jump to session 1..9 (Cmd+1..9), like mRemoteNG
@@ -235,6 +236,7 @@ public sealed partial class MainWindow : Window
 
     private void SaveWindowSettings()
     {
+        if (TestMode.IsActive) return;
         _settings.WindowMaximized = WindowState == WindowState.Maximized;
         if (WindowState == WindowState.Normal)
         {
@@ -248,7 +250,8 @@ public sealed partial class MainWindow : Window
             _settings.TreePaneWidth = MainGrid.ColumnDefinitions[0].Width.Value;
             _settings.ConfigPaneHeight = LeftGrid.RowDefinitions[2].Height.Value;
         }
-        _settings.ShowNotificationsPanel = MessagesList.IsVisible;
+        _settings.ShowNotificationsPanel = NotificationsBody.IsVisible;
+        _settings.NotificationsHeight = NotificationsBody.Height;
         _settings.ShowQuickConnectToolbar = _fullscreen ? _settings.ShowQuickConnectToolbar : QuickConnectBar.IsVisible;
         try { _settings.Save(); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { CrashLog.Write("SaveSettings", ex); }
@@ -431,7 +434,7 @@ public sealed partial class MainWindow : Window
     private void UpdateConfigHeader()
     {
         ConfigTitle.Text = Selected?.Name ?? "";
-        ConfigIcon.Source = Selected is null ? null : NodeIconConverter.Instance.Convert(Selected, typeof(object), null, System.Globalization.CultureInfo.InvariantCulture) as Avalonia.Media.IImage;
+        ConfigIcon.Glyph = Selected is null ? IconNames.Default : IconNames.ForNode(Selected);
     }
 
     private void OnShowProperties(object? sender, RoutedEventArgs e)
@@ -602,16 +605,27 @@ public sealed partial class MainWindow : Window
         ScheduleAutoSave();
     }
 
-    private void OnMoveUp(object? sender, RoutedEventArgs e) { if (Selected is not null) { _vm.Move(Selected, -1); SelectNode(Selected); ScheduleAutoSave(); } }
-    private void OnMoveDown(object? sender, RoutedEventArgs e) { if (Selected is not null) { _vm.Move(Selected, +1); SelectNode(Selected); ScheduleAutoSave(); } }
+    private void OnMoveUp(object? sender, RoutedEventArgs e) => MoveSelected(-1);
+    private void OnMoveDown(object? sender, RoutedEventArgs e) => MoveSelected(+1);
+
+    private void MoveSelected(int delta)
+    {
+        var node = Selected;
+        if (node is null) return;
+        _vm.Move(node, delta);
+        ScheduleAutoSave();
+        // the TreeView re-creates the moved container on the next layout pass and may drop the selection meanwhile
+        SelectNode(node);
+        Dispatcher.UIThread.Post(() => { _vm.SelectedNode = node; FocusTree(); }, DispatcherPriority.Background);
+    }
     private void OnSortAsc(object? sender, RoutedEventArgs e) { _vm.Sort(true); UpdateSortIcon(); ScheduleAutoSave(); }
     private void OnSortDesc(object? sender, RoutedEventArgs e) { _vm.Sort(false); UpdateSortIcon(); ScheduleAutoSave(); }
     private void OnSortToggle(object? sender, RoutedEventArgs e) { _vm.Sort(!_vm.SortAscending); UpdateSortIcon(); ScheduleAutoSave(); }
 
     private void UpdateSortIcon()
     {
-        SortImage.Source = ImageCache.Image(_vm.SortAscending ? "SortAscending_16x" : "SortDescending_16x");
-        ToolTip.SetTip(SortButton, _vm.SortAscending ? "Sort A-Z" : "Sort Z-A");
+        SortIcon.Glyph = _vm.SortAscending ? "arrow-down-a-z" : "arrow-up-z-a";
+        ToolTip.SetTip(SortButton, _vm.SortAscending ? "Sort A–Z" : "Sort Z–A");
     }
 
     private void OnExpandAll(object? sender, RoutedEventArgs e) => _vm.ExpandAll(true);
@@ -653,7 +667,7 @@ public sealed partial class MainWindow : Window
         var menu = new MenuFlyout();
         foreach (var f in _vm.Favorites())
         {
-            var item = new MenuItem { Header = f.Name, Icon = new Image { Source = ImageCache.Image(f.OpenConnections > 0 ? "Stop_16x" : "Run_16x"), Width = 16, Height = 16 } };
+            var item = new MenuItem { Header = f.Name, Icon = new Controls.Icon { Glyph = IconNames.ForNode(f) } };
             var target = f;
             item.Click += (_, _) => AsyncHelper.Fire(() => OpenConnectionAsync(target), $"Connect {target.Name}");
             menu.Items.Add(item);
@@ -672,11 +686,7 @@ public sealed partial class MainWindow : Window
 
     private MenuItem BuildNodeMenu(ConnectionInfo n)
     {
-        var item = new MenuItem
-        {
-            Header = n.Name,
-            Icon = new Image { Source = NodeIconConverter.Instance.Convert(n, typeof(object), null, System.Globalization.CultureInfo.InvariantCulture) as Avalonia.Media.IImage, Width = 16, Height = 16 }
-        };
+        var item = new MenuItem { Header = n.Name, Icon = new Controls.Icon { Glyph = IconNames.ForNode(n) } };
         if (n is ContainerInfo c)
         {
             foreach (var child in c.Children) item.Items.Add(BuildNodeMenu(child));
@@ -766,12 +776,13 @@ public sealed partial class MainWindow : Window
 
     private StackPanel BuildTabHeader(ConnectionTab tab)
     {
-        var icon = new Image { Source = ImageCache.ConnectionIcon(tab.Info.Icon), Width = 16, Height = 16, Margin = new Thickness(0, 0, 5, 0) };
+        var icon = new Controls.Icon { Glyph = IconNames.ForConnectionIcon(tab.Info.Icon), Size = 14, Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center };
+        var dot = new Avalonia.Controls.Shapes.Ellipse { Width = 7, Height = 7, Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center, IsVisible = false };
         var text = new TextBlock { Text = tab.Title, VerticalAlignment = VerticalAlignment.Center };
-        var close = new Button { Content = "✕", FontSize = 10, Padding = new Thickness(4, 0), Margin = new Thickness(8, 0, 0, 0), Background = Avalonia.Media.Brushes.Transparent, BorderThickness = new Thickness(0), MinWidth = 0, MinHeight = 0, Height = 18, VerticalAlignment = VerticalAlignment.Center };
-        ToolTip.SetTip(close, "Disconnect");
+        var close = new Button { Content = new Controls.Icon { Glyph = "x", Size = 12 }, Classes = { "tabClose" } };
+        ToolTip.SetTip(close, "Disconnect (⌘W)");
         close.Click += (_, _) => AsyncHelper.Fire(() => CloseTabAsync(tab), "Close tab");
-        var panel = new StackPanel { Orientation = Orientation.Horizontal, Children = { icon, text, close }, Background = Avalonia.Media.Brushes.Transparent };
+        var panel = new StackPanel { Orientation = Orientation.Horizontal, Children = { icon, dot, text, close }, Background = Avalonia.Media.Brushes.Transparent };
         panel.PointerPressed += (_, e) =>
         {
             if (e.GetCurrentPoint(panel).Properties.IsMiddleButtonPressed) AsyncHelper.Fire(() => CloseTabAsync(tab), "Close tab");
@@ -786,22 +797,22 @@ public sealed partial class MainWindow : Window
         MenuItem Mk(string header, Action action, string? icon = null)
         {
             var mi = new MenuItem { Header = header };
-            if (icon is not null) mi.Icon = new Image { Source = ImageCache.Image(icon), Width = 16, Height = 16 };
+            if (icon is not null) mi.Icon = new Controls.Icon { Glyph = icon };
             mi.Click += (_, _) => action();
             return mi;
         }
-        menu.Items.Add(Mk("Reconnect", () => AsyncHelper.Fire(tab.ConnectAsync, "Reconnect"), "Refresh_16x"));
-        menu.Items.Add(Mk("Disconnect", () => AsyncHelper.Fire(() => CloseTabAsync(tab), "Disconnect"), "Stop_16x"));
+        menu.Items.Add(Mk("Reconnect", () => AsyncHelper.Fire(tab.ConnectAsync, "Reconnect"), "refresh-cw"));
+        menu.Items.Add(Mk("Disconnect", () => AsyncHelper.Fire(() => CloseTabAsync(tab), "Disconnect"), "circle-stop"));
         menu.Items.Add(Mk("Disconnect others", () => AsyncHelper.Fire(async () => { foreach (var t in _vm.Tabs.Where(t => t != tab).ToList()) await CloseTabAsync(t); }, "Disconnect others")));
         menu.Items.Add(new Separator());
         menu.Items.Add(Mk("Rename tab", () => AsyncHelper.Fire(async () =>
         {
             var name = await Dialogs.Dialogs.Input(this, "Rename tab", "Tab title:", tab.Title);
             if (!string.IsNullOrWhiteSpace(name)) tab.Title = name.Trim();
-        }, "Rename tab"), "Rename_16x"));
-        menu.Items.Add(Mk("Duplicate tab", () => AsyncHelper.Fire(() => OpenConnectionAsync(tab.Info), "Duplicate tab"), "Copy_16x"));
+        }, "Rename tab"), "pencil"));
+        menu.Items.Add(Mk("Duplicate tab", () => AsyncHelper.Fire(() => OpenConnectionAsync(tab.Info), "Duplicate tab"), "copy"));
         menu.Items.Add(new Separator());
-        menu.Items.Add(Mk("Fullscreen", () => EnterFullscreen(!_fullscreen), "FullScreen_16x"));
+        menu.Items.Add(Mk("Fullscreen", () => EnterFullscreen(!_fullscreen), "maximize"));
         var smart = new MenuItem { Header = "SmartSize", ToggleType = MenuItemToggleType.CheckBox, IsChecked = tab.SmartSize };
         smart.Click += (_, _) => { tab.SmartSize = !tab.SmartSize; smart.IsChecked = tab.SmartSize; };
         menu.Items.Add(smart);
@@ -822,11 +833,13 @@ public sealed partial class MainWindow : Window
     private void UpdateTabHeader(ConnectionTab tab)
     {
         var item = Tabs.Items.OfType<TabItem>().FirstOrDefault(i => i.Tag == tab);
-        if (item?.Header is StackPanel { Children: [Image icon, TextBlock text, ..] })
+        if (item?.Header is StackPanel { Children: [Controls.Icon icon, Avalonia.Controls.Shapes.Ellipse dot, TextBlock text, ..] })
         {
             text.Text = tab.Title;
-            text.Opacity = tab.State == TabState.Connected ? 1.0 : 0.6;
-            icon.Source = ImageCache.ConnectionIcon(tab.Info.Icon);
+            text.Opacity = tab.State == TabState.Connected ? 1.0 : 0.65;
+            icon.Glyph = IconNames.ForConnectionIcon(tab.Info.Icon);
+            dot.IsVisible = tab.State is TabState.Connected or TabState.Connecting;
+            dot.Fill = tab.State == TabState.Connected ? this.FindResource("StatusSuccessBrush") as Avalonia.Media.IBrush : this.FindResource("StatusWarningBrush") as Avalonia.Media.IBrush;
         }
     }
 
@@ -893,13 +906,20 @@ public sealed partial class MainWindow : Window
 
     // ------------------------------------------------------------------ view
 
-    private void OnToggleNotifications(object? sender, RoutedEventArgs e) => SetNotificationsVisible(!MessagesList.IsVisible);
+    private void OnToggleNotifications(object? sender, RoutedEventArgs e) => SetNotificationsVisible(!NotificationsBody.IsVisible);
 
     private void SetNotificationsVisible(bool visible)
     {
-        MessagesList.IsVisible = visible;
+        NotificationsBody.IsVisible = visible;
         MenuViewNotifications.IsChecked = visible;
-        NotificationsTitle.Text = Notifications.Instance.Messages.Count == 0 ? "Notifications" : $"Notifications ({Notifications.Instance.Messages.Count})";
+        NotificationsChevron.Glyph = visible ? "chevron-down" : "chevron-right";
+        UpdateNotificationsTitle();
+    }
+
+    private void UpdateNotificationsTitle()
+    {
+        var n = Notifications.Instance.Messages.Count;
+        NotificationsTitle.Text = n == 0 ? "NOTIFICATIONS" : $"NOTIFICATIONS ({n})";
     }
 
     private void OnToggleQuickConnect(object? sender, RoutedEventArgs e)
@@ -912,9 +932,9 @@ public sealed partial class MainWindow : Window
     private void OnResetLayout(object? sender, RoutedEventArgs e)
     {
         if (_fullscreen) EnterFullscreen(false);
-        MainGrid.ColumnDefinitions[0].Width = new GridLength(280);
-        LeftGrid.RowDefinitions[2].Height = new GridLength(250);
-        MessagesList.Height = 140;
+        MainGrid.ColumnDefinitions[0].Width = new GridLength(300);
+        LeftGrid.RowDefinitions[2].Height = new GridLength(280);
+        NotificationsBody.Height = 150;
         SetNotificationsVisible(false);
         QuickConnectBar.IsVisible = true;
         MenuViewQuickConnect.IsChecked = true;
@@ -954,21 +974,29 @@ public sealed partial class MainWindow : Window
     private void OnDeleteMessage(object? sender, RoutedEventArgs e)
     {
         if (MessagesList.SelectedItem is NotificationMessage m) Notifications.Instance.Messages.Remove(m);
-        SetNotificationsVisible(MessagesList.IsVisible);
+        UpdateNotificationsTitle();
     }
 
     private void OnClearMessages(object? sender, RoutedEventArgs e)
     {
         Notifications.Instance.Messages.Clear();
-        SetNotificationsVisible(MessagesList.IsVisible);
+        UpdateNotificationsTitle();
     }
 
     // ------------------------------------------------------------------ help
 
+    private const string ProjectUrl = "https://github.com/PollySec/mremotemac";
     private static void OpenUrl(string url) => Process.Start(new ProcessStartInfo("open", url) { UseShellExecute = false });
-    private void OnHelp(object? sender, RoutedEventArgs e) => OpenUrl("https://mremoteng.readthedocs.io/");
-    private void OnWebsite(object? sender, RoutedEventArgs e) => OpenUrl("https://mremoteng.org/");
-    private void OnReportIssue(object? sender, RoutedEventArgs e) => OpenUrl("https://github.com/mRemoteNG/mRemoteNG/issues");
+    private void OnShortcuts(object? sender, RoutedEventArgs e) => AsyncHelper.Fire(() => ShortcutsDialog.Show(this), "Shortcuts");
+    private void OnHelp(object? sender, RoutedEventArgs e) => OpenUrl(ProjectUrl + "#using-it");
+    private void OnWebsite(object? sender, RoutedEventArgs e) => OpenUrl(ProjectUrl);
+    private void OnReportIssue(object? sender, RoutedEventArgs e) => OpenUrl(ProjectUrl + "/issues/new/choose");
+    private void OnOpenLogFolder(object? sender, RoutedEventArgs e)
+    {
+        var dir = Path.GetDirectoryName(CrashLog.Path)!;
+        Directory.CreateDirectory(dir);
+        Process.Start(new ProcessStartInfo("open", dir) { UseShellExecute = false });
+    }
     private void OnAbout(object? sender, RoutedEventArgs e) => AsyncHelper.Fire(() => Dialogs.Dialogs.About(this), "About");
 
     /// <summary>Minimal ICommand for key bindings.</summary>

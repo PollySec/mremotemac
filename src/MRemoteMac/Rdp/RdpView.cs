@@ -64,10 +64,10 @@ public sealed class RdpView : Control, IRdpFrameTarget
     public RdpView()
     {
         ClipToBounds = true;
-        _resizeTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(350), DispatcherPriority.Background, (_, _) =>
+        // FreeRDP's own clients send at most one layout per 500 ms; the shim enforces the same, so retry until accepted
+        _resizeTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(500), DispatcherPriority.Background, (_, _) =>
         {
-            _resizeTimer!.Stop();
-            RequestDesktopResize();
+            if (RequestDesktopResize()) _resizeTimer!.Stop();
         });
     }
 
@@ -172,13 +172,14 @@ public sealed class RdpView : Control, IRdpFrameTarget
         InvalidateVisual();
     }
 
-    private void RequestDesktopResize()
+    /// <summary>Asks the server to match the desktop to this control. Returns false when it must be retried later.</summary>
+    private bool RequestDesktopResize()
     {
-        if (_session is null || ScaleMode != ViewScaleMode.FitToWindow) return;
+        if (_session is null || ScaleMode != ViewScaleMode.FitToWindow || !_session.IsConnected) return true;
         var (w, h) = SuggestedDesktopSize();
         var bmp = _bitmap;
-        if (bmp is not null && bmp.PixelSize.Width == w && bmp.PixelSize.Height == h) return;
-        _session.ResizeDesktop(w, h);
+        if (bmp is not null && bmp.PixelSize.Width == w && bmp.PixelSize.Height == h) return true;
+        return _session.ResizeDesktop(w, h);
     }
 
     /// <summary>Desktop size to request for this control's current size (even width as RDP requires).</summary>
@@ -302,13 +303,16 @@ public sealed class RdpView : Control, IRdpFrameTarget
         // Avalonia: one notch = 1.0, trackpads give fractions. RDP: units of 120 per notch, 8-bit magnitude per PDU.
         var units = (int)Math.Round(delta * 120);
         if (units == 0) units = delta > 0 ? 1 : -1;
+        // RDP: positive = up / right; AppKit (and Avalonia on macOS) report a positive X delta when scrolling left
+        if (horizontal) units = -units;
         while (units != 0)
         {
             var step = Math.Clamp(units, -255, 255);
             units -= step;
             ushort flags = horizontal ? RdpInput.PTR_FLAGS_HWHEEL : RdpInput.PTR_FLAGS_WHEEL;
-            if (step < 0) flags |= RdpInput.PTR_FLAGS_WHEEL_NEGATIVE;
-            flags |= (ushort)(Math.Abs(step) & 0xFF);
+            var magnitude = Math.Abs(step);
+            // the rotation is a 9-bit two's complement value: negative = NEGATIVE flag + (0x100 - magnitude)
+            flags |= step < 0 ? (ushort)(RdpInput.PTR_FLAGS_WHEEL_NEGATIVE | (0x100 - magnitude)) : (ushort)magnitude;
             _session.SendMouse(flags, x, y);
         }
     }

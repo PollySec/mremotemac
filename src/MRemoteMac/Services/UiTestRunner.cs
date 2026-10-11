@@ -304,7 +304,8 @@ public sealed class UiTestRunner : IDisposable
         sb.AppendLine($"  windows: {string.Join(" | ", Windows().Select(w => $"'{w.Title}' {w.Bounds.Width:0}x{w.Bounds.Height:0}"))}");
         sb.AppendLine($"  selected: {vm.SelectedNode?.Name} ({vm.SelectedNode?.GetType().Name}) host={vm.SelectedNode?.Hostname} parent={vm.SelectedNode?.Parent?.Name}");
         sb.AppendLine($"  tabs: {vm.Tabs.Count} current={_main.CurrentTabForTest?.Title} state={_main.CurrentTabForTest?.State} desktop={_main.CurrentTabForTest?.Session?.Width}x{_main.CurrentTabForTest?.Session?.Height}");
-        sb.AppendLine($"  dirty={vm.IsDirty} file={vm.FilePath} theme={Application.Current!.ActualThemeVariant} focus={FocusName()}");
+        var focusedText = TopLevel.GetTopLevel(Topmost())?.FocusManager?.GetFocusedElement() is TextBox ftb ? $" text='{ftb.Text}'" : "";
+        sb.AppendLine($"  dirty={vm.IsDirty} file={vm.FilePath} theme={Application.Current!.ActualThemeVariant} focus={FocusName()}{focusedText}");
         sb.AppendLine($"  tree: {string.Join(", ", vm.Root.Children.Select(c => c.Name + (c is ContainerInfo ci ? $"[{ci.Children.Count}]" : "")))}");
         sb.Append($"  notifications: {string.Join(" || ", Notifications.Instance.Messages.TakeLast(3).Select(m => m.Text))}");
         Log(sb.ToString());

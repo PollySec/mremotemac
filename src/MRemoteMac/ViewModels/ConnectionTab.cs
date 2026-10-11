@@ -60,12 +60,12 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
         _owner = owner;
         _title = info.Name;
 
-        _overlayText = new TextBlock { Foreground = Brushes.White, FontSize = 14, TextWrapping = TextWrapping.Wrap, MaxWidth = 520, TextAlignment = TextAlignment.Center };
+        _overlayText = new TextBlock { Foreground = new SolidColorBrush(Color.Parse("#E5E8EC")), FontSize = 14, TextWrapping = TextWrapping.Wrap, MaxWidth = 520, TextAlignment = TextAlignment.Center, LineHeight = 22 };
         _reconnectButton = new Button { Content = "Reconnect", Classes = { "dialog", "primary" }, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 14, 0, 0), IsVisible = false };
         _reconnectButton.Click += (_, _) => AsyncHelper.Fire(ConnectAsync, $"Reconnect {Info.Name}");
         _overlay = new Border
         {
-            Background = new SolidColorBrush(Color.FromArgb(0xD0, 0x1E, 0x1E, 0x1E)),
+            Background = new SolidColorBrush(Color.FromArgb(0xE6, 0x10, 0x14, 0x18)),
             Child = new StackPanel
             {
                 VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center,
@@ -147,6 +147,12 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
                 SetState(TabState.Failed, $"Connection to {Info.Name} failed:\n{text}");
                 Notifications.Instance.Error($"{Info.Name}: {text}");
             }
+        });
+        session.Reconnecting += () => Dispatcher.UIThread.Post(() =>
+        {
+            if (generation != _generation) return;
+            SetState(TabState.Connecting, $"Connection to {Info.Name} lost, reconnecting...");
+            Notifications.Instance.Warn($"{Info.Name}: connection lost, reconnecting.");
         });
         session.ClipboardTextReceived += text => Dispatcher.UIThread.Post(() => AsyncHelper.Fire(() => SetLocalClipboardAsync(text), "Clipboard"));
 

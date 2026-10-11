@@ -7,21 +7,24 @@ public enum MessageClass { Information, Warning, Error }
 
 public sealed record NotificationMessage(MessageClass Class, string Text, DateTime Time)
 {
-    public string IconPath => Class switch
+    public string IconName => Class switch
     {
-        MessageClass.Error => "avares://mRemoteMac/Assets/Images/LogError_16x.png",
-        MessageClass.Warning => "avares://mRemoteMac/Assets/Images/LogWarning_16x.png",
-        _ => "avares://mRemoteMac/Assets/Images/StatusInformation_16x.png"
+        MessageClass.Error => "circle-x",
+        MessageClass.Warning => "triangle-alert",
+        _ => "info"
     };
-    public string Display => $"{Time:HH:mm:ss}  {Text}";
+
+    public string IconClass => Class switch { MessageClass.Error => "error", MessageClass.Warning => "warning", _ => "info" };
+    public string TimeText => Time.ToString("HH:mm:ss", System.Globalization.CultureInfo.CurrentCulture);
+    public string Display => $"{TimeText}  {Text}";
 }
 
-/// <summary>mRemoteNG "Errors and Infos" message collector.</summary>
+/// <summary>Collects status, warning and error messages for the notifications panel (mRemoteNG "Errors and Infos").</summary>
 public sealed class Notifications
 {
     public static Notifications Instance { get; } = new();
     public static bool EchoToConsole { get; set; } = Environment.GetEnvironmentVariable("MRM_LOG") == "1";
-    public ObservableCollection<NotificationMessage> Messages { get; } = new();
+    public ObservableCollection<NotificationMessage> Messages { get; } = [];
     public event Action<NotificationMessage>? MessageAdded;
 
     public void Add(MessageClass cls, string text)
