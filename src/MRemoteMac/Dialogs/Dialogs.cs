@@ -169,12 +169,22 @@ public static class Dialogs
         header.Children.Add(new Image { Source = AppIcon.Bitmap, Width = 72, Height = 72 });
         var titles = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         titles.Children.Add(new TextBlock { Text = "mRemoteMac", FontSize = 22, FontWeight = FontWeight.Bold });
-        titles.Children.Add(new TextBlock { Text = $"Version {typeof(Dialogs).Assembly.GetName().Version?.ToString(3)}", Foreground = Brushes.Gray });
-        titles.Children.Add(new TextBlock { Text = $".NET {Environment.Version}  ·  FreeRDP {Native.Version()}  ·  Avalonia {typeof(Window).Assembly.GetName().Version?.ToString(3)}", Foreground = Brushes.Gray, FontSize = 11 });
+        var version = typeof(Dialogs).Assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+            .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion ?? "0.0.0";
+        var plus = version.IndexOf('+', StringComparison.Ordinal);
+        if (plus > 0) version = version[..plus];
+        var versionText = new TextBlock { Text = $"Version {version}" };
+        versionText.Classes.Add("secondary");
+        titles.Children.Add(versionText);
+        var stack = new TextBlock { Text = $".NET {Environment.Version}  ·  FreeRDP {Native.Version()}  ·  Avalonia {typeof(Window).Assembly.GetName().Version?.ToString(3)}" };
+        stack.Classes.Add("caption");
+        titles.Children.Add(stack);
         header.Children.Add(titles);
         body.Children.Add(header);
         body.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0), Text = "A native Apple Silicon port of the mRemoteNG connection manager with embedded RDP sessions, built on Avalonia UI and FreeRDP." });
-        body.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 11, Foreground = Brushes.Gray, Text = "mRemoteMac is free software under the GNU General Public License v2, like mRemoteNG. FreeRDP is licensed under the Apache License 2.0. Icons from mRemoteNG and the Visual Studio Image Library." });
+        var license = new TextBlock { TextWrapping = TextWrapping.Wrap, Text = "mRemoteMac is free software under the GNU General Public License v2, like mRemoteNG, and is not affiliated with the mRemoteNG project. FreeRDP is licensed under the Apache License 2.0. Icons by Lucide (ISC). © PollySec Labs AB." };
+        license.Classes.Add("caption");
+        body.Children.Add(license);
         var ok = new Button { Content = "OK", IsDefault = true, IsCancel = true };
         var w = Frame("About mRemoteMac", body, ok);
         ok.Click += (_, _) => w.Close();

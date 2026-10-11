@@ -2,7 +2,8 @@
 # Builds libmrrdp.dylib and bundles FreeRDP libraries into native/out
 set -e
 HERE=${0:A:h}
-DEPS=${DEPS:-$HOME/RiderProjects/mRemoteMac-deps/freerdp/install}
+# dependencies live next to the repository (../mRemoteMac-deps), as produced by build-deps.sh; override with DEPS=
+DEPS=${DEPS:-${HERE:h}/../mRemoteMac-deps/freerdp/install}
 OUT=$HERE/out
 mkdir -p $OUT
 clang -dynamiclib -arch arm64 -mmacosx-version-min=14.0 -O2 -fvisibility=hidden \

@@ -8,6 +8,13 @@ namespace MRemoteMac.Dialogs;
 
 public static class OptionsDialog
 {
+    private static TextBlock Heading(string text)
+    {
+        var t = new TextBlock { Text = text.ToUpperInvariant(), FontSize = 11, FontWeight = Avalonia.Media.FontWeight.SemiBold, LetterSpacing = 0.6, Margin = new Thickness(0, 10, 0, 2) };
+        t.Classes.Add("secondary");
+        return t;
+    }
+
     public static async Task<bool> Show(Window owner, AppSettings s)
     {
         var cmd = new ComboBox { ItemsSource = Enum.GetValues<CommandKeyMode>(), SelectedItem = s.CommandKey, Width = 200 };
@@ -19,27 +26,29 @@ public static class OptionsDialog
         var dark = new CheckBox { Content = "Dark appearance", IsChecked = s.DarkTheme };
 
         var body = new StackPanel { Spacing = 8, Width = 460 };
-        body.Children.Add(new TextBlock { Text = "Keyboard", FontWeight = Avalonia.Media.FontWeight.Bold });
+        body.Children.Add(Heading("Keyboard"));
         body.Children.Add(new DockPanel { Children = { new TextBlock { Text = "⌘ Command key acts as:", Width = 180, VerticalAlignment = VerticalAlignment.Center, [DockPanel.DockProperty] = Dock.Left }, cmd } });
-        body.Children.Add(new TextBlock { Text = "Behaviour", FontWeight = Avalonia.Media.FontWeight.Bold, Margin = new Thickness(0, 8, 0, 0) });
+        body.Children.Add(Heading("Behaviour"));
         body.Children.Add(single);
         body.Children.Add(confirm);
         body.Children.Add(autosave);
         body.Children.Add(closeTab);
-        body.Children.Add(new TextBlock { Text = "RDP", FontWeight = Avalonia.Media.FontWeight.Bold, Margin = new Thickness(0, 8, 0, 0) });
+        body.Children.Add(Heading("RDP"));
         body.Children.Add(gfx);
-        body.Children.Add(new TextBlock { Text = "Theme", FontWeight = Avalonia.Media.FontWeight.Bold, Margin = new Thickness(0, 8, 0, 0) });
+        body.Children.Add(Heading("Appearance"));
         body.Children.Add(dark);
-        body.Children.Add(new TextBlock { Text = $"Settings and the default connection file live in:\n{AppSettings.Directory}", Foreground = Avalonia.Media.Brushes.Gray, FontSize = 11, TextWrapping = Avalonia.Media.TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0) });
+        var where = new TextBlock { Text = $"Settings and the default connection file live in:\n{AppSettings.Directory}", TextWrapping = Avalonia.Media.TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0) };
+        where.Classes.Add("caption");
+        body.Children.Add(where);
 
-        var ok = new Button { Content = "OK", IsDefault = true, MinWidth = 80 };
-        var cancel = new Button { Content = "Cancel", IsCancel = true, MinWidth = 80 };
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 8, Margin = new Thickness(0, 12, 0, 0), Children = { ok, cancel } };
+        var ok = new Button { Content = "OK", IsDefault = true, Classes = { "dialog", "primary" } };
+        var cancel = new Button { Content = "Cancel", IsCancel = true, Classes = { "dialog" } };
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 8, Margin = new Thickness(0, 16, 0, 0), Children = { cancel, ok } };
         var w = new Window
         {
-            Title = "Options", SizeToContent = SizeToContent.WidthAndHeight, CanResize = false,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            Content = new StackPanel { Margin = new Thickness(16), Children = { body, buttons } }
+            Title = "Options", SizeToContent = SizeToContent.WidthAndHeight, CanResize = false, ShowInTaskbar = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner, Icon = Converters.AppIcon.Window,
+            Content = new StackPanel { Margin = new Thickness(20, 16, 20, 16), Children = { body, buttons } }
         };
         TestMode.Prepare(w);
         var saved = false;
