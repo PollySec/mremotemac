@@ -111,8 +111,9 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (node is RootNodeInfo || node.Parent is null) return;
         var parent = node.Parent;
-        parent.RemoveChild(node);
+        // select the parent first so the TreeView has nothing to re-select when the item disappears (mRemoteNG behaviour)
         SelectedNode = parent;
+        parent.RemoveChild(node);
         MarkDirty();
     }
 

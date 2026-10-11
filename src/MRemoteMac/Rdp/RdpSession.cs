@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Text;
 using Avalonia.Threading;
 
 namespace MRemoteMac.Rdp;
@@ -22,53 +23,62 @@ public sealed record Credentials(string Username, string Password, string Domain
 
 public sealed class RemotePointer
 {
-    public int Width { get; init; }
-    public int Height { get; init; }
-    public int HotX { get; init; }
-    public int HotY { get; init; }
-    public byte[] Bgra { get; init; } = Array.Empty<byte>();
-    public object? Cached { get; set; } // Avalonia Cursor created lazily on the UI thread
+    public required int Width { get; init; }
+    public required int Height { get; init; }
+    public required int HotX { get; init; }
+    public required int HotY { get; init; }
+    public required byte[] Bgra { get; init; }
+    /// <summary>Platform cursor created lazily on the UI thread.</summary>
+    public object? Cached { get; set; }
+}
+
+/// <summary>Receives framebuffer updates straight from the FreeRDP thread (no intermediate copy).</summary>
+public interface IRdpFrameTarget
+{
+    /// <summary>The remote desktop changed size; subsequent writes use the new geometry. Called on the RDP thread.</summary>
+    void Resize(int width, int height);
+
+    /// <summary>Copies a dirty rectangle of 32bpp BGRA pixels. <paramref name="src"/> points at the top-left pixel of the rect. RDP thread.</summary>
+    unsafe void Write(byte* src, int srcStride, int x, int y, int width, int height);
+
+    /// <summary>A batch of writes is complete and may be shown. RDP thread.</summary>
+    void Present();
 }
 
 /// <summary>
-/// A managed RDP session. Owns a native mr_session and a managed BGRA back buffer that mirrors the remote desktop.
-/// Events marked (rdp thread) are raised on the FreeRDP thread; the view marshals them to the UI thread.
+/// A managed RDP session over the native shim. Events documented as "RDP thread" are raised on the FreeRDP
+/// worker thread; consumers must marshal to the UI thread themselves. Certificate and credential prompts block
+/// the RDP thread while the answer is produced on the UI thread, which is what FreeRDP's synchronous callbacks require.
 /// </summary>
 public sealed unsafe class RdpSession : IDisposable
 {
     private IntPtr _handle;
     private GCHandle _self;
-    private bool _disposed;
+    private int _disposed;
+    private int _connected;
+    private IRdpFrameTarget? _target;
 
-    public readonly object BufferLock = new();
-    public byte[] Buffer { get; private set; } = Array.Empty<byte>();
+    public bool IsConnected => Volatile.Read(ref _connected) != 0;
     public int Width { get; private set; }
     public int Height { get; private set; }
-    public int Stride => Width * 4;
-
-    // dirty rect accumulated under BufferLock; consumer resets it
-    public int DirtyX0 = int.MaxValue, DirtyY0 = int.MaxValue, DirtyX1 = -1, DirtyY1 = -1;
-
-    public bool IsConnected => _handle != IntPtr.Zero && Native.mr_is_connected(_handle) != 0;
-    public bool HasConnected { get; private set; }
     public uint LastError { get; private set; }
     public string LastErrorText { get; private set; } = "";
 
-    public event Action? FrameDirty;              // (rdp thread)
-    public event Action<int, int>? Resized;       // (rdp thread)
-    public event Action? Connected;               // (rdp thread)
-    public event Action<uint, string>? Disconnected; // (rdp thread)
-    public event Action<RemotePointer?>? PointerChanged; // (rdp thread) null => default cursor
-    public event Action? PointerHidden;           // (rdp thread)
-    public event Action<string>? ClipboardTextReceived; // (rdp thread)
+    public event Action? Connected;                        // RDP thread
+    public event Action<uint, string>? Disconnected;       // RDP thread
+    public event Action<RemotePointer?>? PointerChanged;   // RDP thread; null = default cursor
+    public event Action? PointerHidden;                    // RDP thread
+    public event Action<string>? ClipboardTextReceived;    // RDP thread
 
-    /// <summary>Called on the UI thread; must return a decision. Default: accept once.</summary>
+    /// <summary>Invoked on the UI thread; default accepts the certificate for this session only.</summary>
     public Func<CertificateInfo, Task<CertificateDecision>>? VerifyCertificate { get; set; }
-    /// <summary>Called on the UI thread; return null to cancel.</summary>
+
+    /// <summary>Invoked on the UI thread; return null to cancel the connection.</summary>
     public Func<AuthRequest, Task<Credentials?>>? Authenticate { get; set; }
 
-    public RdpSession()
+    public RdpSession(IRdpFrameTarget target)
     {
+        _target = target;
         _self = GCHandle.Alloc(this);
         var cb = new Native.Callbacks
         {
@@ -86,7 +96,11 @@ public sealed unsafe class RdpSession : IDisposable
             on_clipboard_text = (IntPtr)(delegate* unmanaged[Cdecl]<IntPtr, IntPtr, void>)&OnClipboardText,
         };
         _handle = Native.mr_session_create(ref cb);
-        if (_handle == IntPtr.Zero) throw new InvalidOperationException("mr_session_create failed");
+        if (_handle == IntPtr.Zero)
+        {
+            _self.Free();
+            throw new InvalidOperationException("mr_session_create failed");
+        }
     }
 
     private static RdpSession? From(IntPtr user) => GCHandle.FromIntPtr(user).Target as RdpSession;
@@ -106,187 +120,167 @@ public sealed unsafe class RdpSession : IDisposable
 
     // ---------------- lifecycle ----------------
 
+    /// <summary>Starts the connection on the FreeRDP worker thread and returns immediately.</summary>
     public void Connect()
     {
+        ObjectDisposedException.ThrowIf(_disposed != 0, this);
         var rc = Native.mr_connect(_handle);
         if (rc != 0) throw new InvalidOperationException($"mr_connect failed ({rc})");
     }
 
+    /// <summary>Aborts the connection and joins the worker thread. Blocking; never call on the UI thread while a prompt may be pending.</summary>
     public void Disconnect()
     {
         if (_handle != IntPtr.Zero) Native.mr_disconnect(_handle);
     }
 
+    public Task DisconnectAsync() => Task.Run(Disconnect);
+
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         if (_handle != IntPtr.Zero)
         {
-            Native.mr_session_destroy(_handle);
+            Native.mr_session_destroy(_handle); // disconnects and joins first, so no callback can run after this
             _handle = IntPtr.Zero;
         }
+        _target = null;
         if (_self.IsAllocated) _self.Free();
     }
 
-    // ---------------- input ----------------
+    // ---------------- input (any thread) ----------------
 
     public void SendMouse(ushort flags, int x, int y)
     {
-        if (_handle == IntPtr.Zero) return;
-        Native.mr_send_mouse(_handle, flags, (ushort)Math.Clamp(x, 0, 65535), (ushort)Math.Clamp(y, 0, 65535));
+        if (IsConnected) Native.mr_send_mouse(_handle, flags, (ushort)Math.Clamp(x, 0, ushort.MaxValue), (ushort)Math.Clamp(y, 0, ushort.MaxValue));
     }
 
     public void SendMouseExt(ushort flags, int x, int y)
     {
-        if (_handle == IntPtr.Zero) return;
-        Native.mr_send_mouse_ext(_handle, flags, (ushort)Math.Clamp(x, 0, 65535), (ushort)Math.Clamp(y, 0, 65535));
+        if (IsConnected) Native.mr_send_mouse_ext(_handle, flags, (ushort)Math.Clamp(x, 0, ushort.MaxValue), (ushort)Math.Clamp(y, 0, ushort.MaxValue));
     }
 
     public void SendScancode(uint scancode, bool down, bool repeat = false)
     {
-        if (_handle != IntPtr.Zero) Native.mr_send_scancode(_handle, down ? 1 : 0, repeat ? 1 : 0, scancode);
+        if (IsConnected) Native.mr_send_scancode(_handle, down ? 1 : 0, repeat ? 1 : 0, scancode);
     }
 
     public void SendUnicode(char c, bool down)
     {
-        if (_handle != IntPtr.Zero) Native.mr_send_unicode(_handle, down ? 1 : 0, c);
+        if (IsConnected) Native.mr_send_unicode(_handle, down ? 1 : 0, c);
     }
 
-    public void SendSync(uint toggles) { if (_handle != IntPtr.Zero) Native.mr_send_sync(_handle, toggles); }
-    public void SendFocusIn(ushort toggles) { if (_handle != IntPtr.Zero) Native.mr_send_focus_in(_handle, toggles); }
+    public void SendSync(uint toggles) { if (IsConnected) Native.mr_send_sync(_handle, toggles); }
+    public void SendFocusIn(ushort toggles) { if (IsConnected) Native.mr_send_focus_in(_handle, toggles); }
 
     public bool ResizeDesktop(int width, int height)
-        => _handle != IntPtr.Zero && Native.mr_resize_desktop(_handle, (uint)width, (uint)height) != 0;
+        => IsConnected && Native.mr_resize_desktop(_handle, (uint)width, (uint)height) != 0;
 
     public bool SetClipboardText(string? text)
         => _handle != IntPtr.Zero && Native.mr_set_clipboard_text(_handle, text) != 0;
 
-    /// <summary>Sends a key combination (press all, release in reverse).</summary>
-    public void SendKeyCombination(params uint[] scancodes)
+    /// <summary>Presses all scancodes in order and releases them in reverse.</summary>
+    public void SendKeyCombination(params ReadOnlySpan<uint> scancodes)
     {
         foreach (var s in scancodes) SendScancode(s, true);
         for (var i = scancodes.Length - 1; i >= 0; i--) SendScancode(scancodes[i], false);
     }
 
-    // ---------------- native callbacks (rdp thread) ----------------
+    // ---------------- native callbacks (RDP thread) ----------------
 
-    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void OnFrame(IntPtr user, int x, int y, int w, int h)
     {
         var s = From(user);
-        if (s is null || s._handle == IntPtr.Zero) return;
+        if (s?._target is not { } target || s._handle == IntPtr.Zero) return;
         if (Native.mr_get_framebuffer(s._handle, out var src, out var fbw, out var fbh, out var stride) == 0) return;
-        lock (s.BufferLock)
+        if (s.Width != fbw || s.Height != fbh)
         {
-            if (s.Width != fbw || s.Height != fbh) s.Reallocate(fbw, fbh);
-            var x1 = Math.Min(x + w, fbw);
-            var y1 = Math.Min(y + h, fbh);
-            if (x < 0) x = 0;
-            if (y < 0) y = 0;
-            if (x1 <= x || y1 <= y) return;
-            var rowBytes = (x1 - x) * 4;
-            fixed (byte* dst = s.Buffer)
-            {
-                for (var row = y; row < y1; row++)
-                    System.Buffer.MemoryCopy(src + row * stride + x * 4, dst + row * s.Stride + x * 4, rowBytes, rowBytes);
-            }
-            s.DirtyX0 = Math.Min(s.DirtyX0, x); s.DirtyY0 = Math.Min(s.DirtyY0, y);
-            s.DirtyX1 = Math.Max(s.DirtyX1, x1); s.DirtyY1 = Math.Max(s.DirtyY1, y1);
+            s.Width = fbw; s.Height = fbh;
+            target.Resize(fbw, fbh);
+            target.Write(src, stride, 0, 0, fbw, fbh);
+            target.Present();
+            return;
         }
-        s.FrameDirty?.Invoke();
+        var x1 = Math.Min(x + w, fbw);
+        var y1 = Math.Min(y + h, fbh);
+        x = Math.Max(x, 0); y = Math.Max(y, 0);
+        if (x1 <= x || y1 <= y) return;
+        target.Write(src + (long)y * stride + x * 4, stride, x, y, x1 - x, y1 - y);
+        target.Present();
     }
 
-    private void Reallocate(int w, int h)
-    {
-        Width = w; Height = h;
-        Buffer = new byte[w * h * 4];
-        DirtyX0 = 0; DirtyY0 = 0; DirtyX1 = w; DirtyY1 = h;
-    }
-
-    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void OnResize(IntPtr user, int w, int h)
     {
         var s = From(user);
-        if (s is null) return;
-        lock (s.BufferLock)
+        if (s?._target is not { } target) return;
+        s.Width = w; s.Height = h;
+        target.Resize(w, h);
+        if (s._handle != IntPtr.Zero && Native.mr_get_framebuffer(s._handle, out var src, out var fbw, out var fbh, out var stride) != 0 && fbw == w && fbh == h)
         {
-            s.Reallocate(w, h);
-            if (s._handle != IntPtr.Zero && Native.mr_get_framebuffer(s._handle, out var src, out var fbw, out var fbh, out var stride) != 0 && fbw == w && fbh == h)
-            {
-                fixed (byte* dst = s.Buffer)
-                    for (var row = 0; row < h; row++)
-                        System.Buffer.MemoryCopy(src + row * stride, dst + row * s.Stride, s.Stride, s.Stride);
-            }
+            target.Write(src, stride, 0, 0, w, h);
+            target.Present();
         }
-        s.Resized?.Invoke(w, h);
     }
 
-    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void OnConnected(IntPtr user)
     {
         var s = From(user);
         if (s is null) return;
-        s.HasConnected = true;
+        Volatile.Write(ref s._connected, 1);
         s.Connected?.Invoke();
     }
 
-    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void OnDisconnected(IntPtr user, uint error, IntPtr name, IntPtr desc)
     {
         var s = From(user);
         if (s is null) return;
+        Volatile.Write(ref s._connected, 0);
         s.LastError = error;
-        var n = Marshal.PtrToStringUTF8(name) ?? "";
-        var d = Marshal.PtrToStringUTF8(desc) ?? "";
+        var n = Str(name);
+        var d = Str(desc);
         s.LastErrorText = error == 0 ? "" : string.IsNullOrEmpty(d) ? n : $"{d} ({n})";
         s.Disconnected?.Invoke(error, s.LastErrorText);
     }
 
     private static string Str(IntPtr p) => Marshal.PtrToStringUTF8(p) ?? "";
 
-    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+    private static TResult AskUi<TResult>(Func<Task<TResult>> ask, TResult fallback)
+    {
+        if (Dispatcher.UIThread.CheckAccess()) return fallback; // would deadlock; never expected on the RDP thread
+        try { return Dispatcher.UIThread.InvokeAsync(ask).GetAwaiter().GetResult(); }
+        catch { return fallback; }
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static int OnVerifyCert(IntPtr user, IntPtr host, ushort port, IntPtr cn, IntPtr subject, IntPtr issuer,
         IntPtr fingerprint, uint flags, int changed, IntPtr oldSubject, IntPtr oldIssuer, IntPtr oldFingerprint)
     {
         var s = From(user);
-        if (s?.VerifyCertificate is null) return (int)CertificateDecision.AcceptOnce;
+        if (s?.VerifyCertificate is not { } verify) return (int)CertificateDecision.AcceptOnce;
         var info = new CertificateInfo(Str(host), port, Str(cn), Str(subject), Str(issuer), Str(fingerprint), flags,
             changed != 0, changed != 0 ? Str(oldSubject) : null, changed != 0 ? Str(oldIssuer) : null,
             changed != 0 ? Str(oldFingerprint) : null);
-        try
-        {
-            return (int)Dispatcher.UIThread.InvokeAsync(() => s.VerifyCertificate(info)).GetAwaiter().GetResult();
-        }
-        catch
-        {
-            return (int)CertificateDecision.Reject;
-        }
+        return (int)AskUi(() => verify(info), CertificateDecision.Reject);
     }
 
     private static void WriteUtf8(byte* dst, int cap, string value)
     {
-        var bytes = System.Text.Encoding.UTF8.GetBytes(value);
-        var n = Math.Min(bytes.Length, cap - 1);
-        for (var i = 0; i < n; i++) dst[i] = bytes[i];
-        dst[n] = 0;
+        var span = new Span<byte>(dst, cap);
+        var n = Encoding.UTF8.GetBytes(value.AsSpan(), span[..(cap - 1)]);
+        span[n] = 0;
     }
 
-    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static int OnAuthenticate(IntPtr user, int reason, byte* u, int ucap, byte* p, int pcap, byte* d, int dcap)
     {
         var s = From(user);
-        if (s?.Authenticate is null) return 0;
+        if (s?.Authenticate is not { } authenticate) return 0;
         var req = new AuthRequest(reason, Str((IntPtr)u), Str((IntPtr)p), Str((IntPtr)d));
-        Credentials? result;
-        try
-        {
-            result = Dispatcher.UIThread.InvokeAsync(() => s.Authenticate(req)).GetAwaiter().GetResult();
-        }
-        catch
-        {
-            return 0;
-        }
+        var result = AskUi(() => authenticate(req), null);
         if (result is null) return 0;
         WriteUtf8(u, ucap, result.Username);
         WriteUtf8(p, pcap, result.Password);
@@ -294,26 +288,25 @@ public sealed unsafe class RdpSession : IDisposable
         return 1;
     }
 
-    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static IntPtr OnPointerNew(IntPtr user, int w, int h, int hotX, int hotY, byte* bgra)
     {
-        var data = new byte[w * h * 4];
-        Marshal.Copy((IntPtr)bgra, data, 0, data.Length);
+        var data = new ReadOnlySpan<byte>(bgra, w * h * 4).ToArray();
         var ptr = new RemotePointer { Width = w, Height = h, HotX = hotX, HotY = hotY, Bgra = data };
         return GCHandle.ToIntPtr(GCHandle.Alloc(ptr));
     }
 
-    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void OnPointerFree(IntPtr user, IntPtr handle)
     {
         if (handle == IntPtr.Zero) return;
         var gch = GCHandle.FromIntPtr(handle);
-        if (gch.Target is RemotePointer { Cached: IDisposable disp })
-            Dispatcher.UIThread.Post(() => disp.Dispose());
+        if (gch.Target is RemotePointer { Cached: IDisposable cached })
+            Dispatcher.UIThread.Post(cached.Dispose);
         gch.Free();
     }
 
-    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void OnPointerSet(IntPtr user, IntPtr handle)
     {
         var s = From(user);
@@ -322,17 +315,9 @@ public sealed unsafe class RdpSession : IDisposable
         s.PointerChanged?.Invoke(ptr);
     }
 
-    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
-    private static void OnPointerHidden(IntPtr user)
-    {
-        From(user)?.PointerHidden?.Invoke();
-    }
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void OnPointerHidden(IntPtr user) => From(user)?.PointerHidden?.Invoke();
 
-    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
-    private static void OnClipboardText(IntPtr user, IntPtr utf8)
-    {
-        var s = From(user);
-        if (s is null) return;
-        s.ClipboardTextReceived?.Invoke(Str(utf8));
-    }
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void OnClipboardText(IntPtr user, IntPtr utf8) => From(user)?.ClipboardTextReceived?.Invoke(Str(utf8));
 }

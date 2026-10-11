@@ -4,7 +4,7 @@
 <dict>
     <key>CFBundleName</key><string>mRemoteMac</string>
     <key>CFBundleDisplayName</key><string>mRemoteMac</string>
-    <key>CFBundleIdentifier</key><string>se.jobbs.mremotemac</string>
+    <key>CFBundleIdentifier</key><string>com.pollysec.mremotemac</string>
     <key>CFBundleVersion</key><string>0.1.0</string>
     <key>CFBundleShortVersionString</key><string>0.1.0</string>
     <key>CFBundlePackageType</key><string>APPL</string>

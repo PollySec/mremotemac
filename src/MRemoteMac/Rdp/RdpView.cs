@@ -1,33 +1,34 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
-using Avalonia.Interactivity;
 
 namespace MRemoteMac.Rdp;
 
 public enum ViewScaleMode { SmartSize, FitToWindow, Native }
 
 /// <summary>
-/// Renders an RdpSession's framebuffer and forwards mouse/keyboard input.
+/// Embedded remote-desktop surface. Pixels arrive on the RDP thread through <see cref="IRdpFrameTarget"/> and are
+/// written straight into a <see cref="WriteableBitmap"/> (single copy); the UI thread only invalidates and draws.
 /// </summary>
-public sealed class RdpView : Control
+public sealed class RdpView : Control, IRdpFrameTarget
 {
     private RdpSession? _session;
-    private WriteableBitmap? _bitmap;
-    private int _pendingFrame;
+    private WriteableBitmap? _bitmap;          // written on the RDP thread, drawn on the UI thread
+    private int _presentPending;
     private readonly DispatcherTimer _resizeTimer;
     private Cursor? _remoteCursor;
     private bool _cursorHidden;
-    private int _lastMouseX, _lastMouseY;
-    private readonly HashSet<uint> _pressedKeys = new();
-    private readonly HashSet<PointerUpdateKind> _pressedButtons = new();
+    private int _lastMouseX = -1, _lastMouseY = -1;
+    private readonly HashSet<uint> _pressedKeys = [];
+    private long _frames;
 
     public static readonly StyledProperty<ViewScaleMode> ScaleModeProperty =
-        AvaloniaProperty.Register<RdpView, ViewScaleMode>(nameof(ScaleMode), ViewScaleMode.SmartSize);
+        AvaloniaProperty.Register<RdpView, ViewScaleMode>(nameof(ScaleMode), ViewScaleMode.FitToWindow);
 
     public ViewScaleMode ScaleMode
     {
@@ -37,6 +38,9 @@ public sealed class RdpView : Control
 
     public CommandKeyMode CommandKey { get; set; } = CommandKeyMode.Control;
     public bool ViewOnly { get; set; }
+
+    /// <summary>Frames presented so far (diagnostics).</summary>
+    public long FrameCount => Interlocked.Read(ref _frames);
 
     public RdpSession? Session
     {
@@ -50,26 +54,24 @@ public sealed class RdpView : Control
         }
     }
 
-    public RdpView()
+    static RdpView()
     {
-        Focusable = true;
-        ClipToBounds = true;
-        Background = Brushes.Black;
-        _resizeTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
-        _resizeTimer.Tick += (_, _) =>
-        {
-            _resizeTimer.Stop();
-            RequestDesktopResize();
-        };
         AffectsRender<RdpView>(ScaleModeProperty);
+        FocusableProperty.OverrideDefaultValue<RdpView>(true);
     }
 
-    public IBrush Background { get; set; }
+    public RdpView()
+    {
+        ClipToBounds = true;
+        _resizeTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(350), DispatcherPriority.Background, (_, _) =>
+        {
+            _resizeTimer!.Stop();
+            RequestDesktopResize();
+        });
+    }
 
     private void Attach(RdpSession s)
     {
-        s.FrameDirty += OnFrameDirty;
-        s.Resized += OnResized;
         s.PointerChanged += OnPointerChanged;
         s.PointerHidden += OnPointerHidden;
         s.Disconnected += OnDisconnected;
@@ -77,82 +79,73 @@ public sealed class RdpView : Control
 
     private void Detach(RdpSession s)
     {
-        s.FrameDirty -= OnFrameDirty;
-        s.Resized -= OnResized;
         s.PointerChanged -= OnPointerChanged;
         s.PointerHidden -= OnPointerHidden;
         s.Disconnected -= OnDisconnected;
     }
 
-    // ---------- framebuffer -> bitmap (UI thread) ----------
+    // ---------- IRdpFrameTarget (RDP thread) ----------
 
-    private void OnFrameDirty()
+    public void Resize(int width, int height)
     {
-        if (Interlocked.Exchange(ref _pendingFrame, 1) == 0)
-            Dispatcher.UIThread.Post(FlushFrame, DispatcherPriority.Render);
+        if (width <= 0 || height <= 0) return;
+        var fresh = new WriteableBitmap(new PixelSize(width, height), new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Opaque);
+        var old = Interlocked.Exchange(ref _bitmap, fresh);
+        if (old is not null) Dispatcher.UIThread.Post(old.Dispose, DispatcherPriority.Background);
     }
 
-    private void OnResized(int w, int h) => OnFrameDirty();
+    public unsafe void Write(byte* src, int srcStride, int x, int y, int width, int height)
+    {
+        var bmp = Volatile.Read(ref _bitmap);
+        if (bmp is null) return;
+        var size = bmp.PixelSize;
+        if (x < 0 || y < 0 || x + width > size.Width || y + height > size.Height) return;
+        using var fb = bmp.Lock();
+        var rowBytes = width * 4;
+        var dst = (byte*)fb.Address + (long)y * fb.RowBytes + x * 4;
+        for (var row = 0; row < height; row++)
+        {
+            new ReadOnlySpan<byte>(src, rowBytes).CopyTo(new Span<byte>(dst, rowBytes));
+            src += srcStride;
+            dst += fb.RowBytes;
+        }
+    }
+
+    public void Present()
+    {
+        Interlocked.Increment(ref _frames);
+        if (Interlocked.Exchange(ref _presentPending, 1) == 0)
+            Dispatcher.UIThread.Post(() => { Interlocked.Exchange(ref _presentPending, 0); InvalidateVisual(); }, DispatcherPriority.Render);
+    }
 
     private void OnDisconnected(uint err, string text) => Dispatcher.UIThread.Post(() => { Cursor = Cursor.Default; InvalidateVisual(); });
 
-    private unsafe void FlushFrame()
-    {
-        Interlocked.Exchange(ref _pendingFrame, 0);
-        var s = _session;
-        if (s is null) return;
-        lock (s.BufferLock)
-        {
-            if (s.Width <= 0 || s.Height <= 0) return;
-            if (_bitmap is null || _bitmap.PixelSize.Width != s.Width || _bitmap.PixelSize.Height != s.Height)
-            {
-                _bitmap?.Dispose();
-                _bitmap = new WriteableBitmap(new PixelSize(s.Width, s.Height), new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Opaque);
-                s.DirtyX0 = 0; s.DirtyY0 = 0; s.DirtyX1 = s.Width; s.DirtyY1 = s.Height;
-            }
-            if (s.DirtyX1 <= s.DirtyX0 || s.DirtyY1 <= s.DirtyY0) return;
-            using (var fb = _bitmap.Lock())
-            {
-                var rowBytes = (s.DirtyX1 - s.DirtyX0) * 4;
-                fixed (byte* src = s.Buffer)
-                {
-                    var dst = (byte*)fb.Address;
-                    for (var y = s.DirtyY0; y < s.DirtyY1; y++)
-                        Buffer.MemoryCopy(src + y * s.Stride + s.DirtyX0 * 4, dst + y * fb.RowBytes + s.DirtyX0 * 4, rowBytes, rowBytes);
-                }
-            }
-            s.DirtyX0 = int.MaxValue; s.DirtyY0 = int.MaxValue; s.DirtyX1 = -1; s.DirtyY1 = -1;
-        }
-        InvalidateVisual();
-    }
+    // ---------- layout / render (UI thread) ----------
 
-    // ---------- layout / render ----------
-
-    private Rect DestRect()
+    private Rect DestRect(PixelSize px)
     {
-        if (_bitmap is null) return default;
-        var bw = _bitmap.PixelSize.Width;
-        var bh = _bitmap.PixelSize.Height;
+        double bw = px.Width, bh = px.Height;
         var w = Bounds.Width;
         var h = Bounds.Height;
-        if (ScaleMode == ViewScaleMode.SmartSize && (bw > w || bh > h || true))
+        if (ScaleMode == ViewScaleMode.SmartSize)
         {
-            var scale = Math.Min(w / bw, h / bh);
-            if (scale > 1) scale = 1; // never upscale, like mRemoteNG smart sizing
-            var dw = bw * scale;
-            var dh = bh * scale;
-            return new Rect((w - dw) / 2, (h - dh) / 2, dw, dh);
+            var scale = Math.Min(Math.Min(w / bw, h / bh), 1.0); // never upscale, like mRemoteNG smart sizing
+            var dw = Math.Floor(bw * scale);
+            var dh = Math.Floor(bh * scale);
+            return new Rect(Math.Floor((w - dw) / 2), Math.Floor((h - dh) / 2), dw, dh);
         }
-        // native / fit: 1:1 top-left (fit keeps the remote desktop the size of this control)
+        // FitToWindow: the remote desktop is kept at the panel size, so this is 1:1. Native: 1:1 top-left.
         return new Rect(0, 0, bw, bh);
     }
 
     public override void Render(DrawingContext context)
     {
-        context.FillRectangle(Background, new Rect(Bounds.Size));
-        if (_bitmap is null) return;
-        var dest = DestRect();
-        context.DrawImage(_bitmap, new Rect(_bitmap.Size), dest);
+        context.FillRectangle(Brushes.Black, new Rect(Bounds.Size));
+        var bmp = Volatile.Read(ref _bitmap);
+        if (bmp is null) return;
+        var dest = DestRect(bmp.PixelSize);
+        using (context.PushRenderOptions(new RenderOptions { BitmapInterpolationMode = dest.Width < bmp.PixelSize.Width ? BitmapInterpolationMode.HighQuality : BitmapInterpolationMode.None }))
+            context.DrawImage(bmp, new Rect(bmp.Size), dest);
     }
 
     protected override void OnSizeChanged(SizeChangedEventArgs e)
@@ -169,52 +162,43 @@ public sealed class RdpView : Control
     private void RequestDesktopResize()
     {
         if (_session is null || ScaleMode != ViewScaleMode.FitToWindow) return;
-        var scaling = (TopLevel.GetTopLevel(this)?.RenderScaling) ?? 1.0;
-        var w = (int)(Bounds.Width);
-        var h = (int)(Bounds.Height);
-        _ = scaling;
-        if (w < 200 || h < 200) return;
-        if (_bitmap is not null && _bitmap.PixelSize.Width == (w & ~1) && _bitmap.PixelSize.Height == h) return;
+        var (w, h) = SuggestedDesktopSize();
+        var bmp = Volatile.Read(ref _bitmap);
+        if (bmp is not null && bmp.PixelSize.Width == w && bmp.PixelSize.Height == h) return;
         _session.ResizeDesktop(w, h);
     }
 
-    /// <summary>Desktop size to request for a new connection given the current control size.</summary>
+    /// <summary>Desktop size to request for this control's current size (even width as RDP requires).</summary>
     public (int Width, int Height) SuggestedDesktopSize()
     {
-        var w = (int)Bounds.Width;
+        var w = (int)Bounds.Width & ~1;
         var h = (int)Bounds.Height;
-        if (w < 640 || h < 480) return (1280, 800);
-        return (w & ~1, h);
+        if (w < 200 || h < 200) return (1280, 800);
+        return (w, h);
     }
 
     // ---------- pointer ----------
 
-    private void OnPointerChanged(RemotePointer? ptr)
+    private void OnPointerChanged(RemotePointer? ptr) => Dispatcher.UIThread.Post(() =>
     {
-        Dispatcher.UIThread.Post(() =>
+        _cursorHidden = false;
+        if (ptr is null) { _remoteCursor = null; Cursor = Cursor.Default; return; }
+        if (ptr.Cached is not Cursor cursor)
         {
-            _cursorHidden = false;
-            if (ptr is null) { _remoteCursor = null; Cursor = Cursor.Default; return; }
-            if (ptr.Cached is not Cursor cursor)
-            {
-                cursor = CreateCursor(ptr);
-                ptr.Cached = cursor;
-            }
-            _remoteCursor = cursor;
-            Cursor = cursor;
-        });
-    }
+            cursor = CreateCursor(ptr);
+            ptr.Cached = cursor;
+        }
+        _remoteCursor = cursor;
+        Cursor = cursor;
+    });
 
-    private void OnPointerHidden()
-    {
-        Dispatcher.UIThread.Post(() => { _cursorHidden = true; Cursor = new Cursor(StandardCursorType.None); });
-    }
+    private void OnPointerHidden() => Dispatcher.UIThread.Post(() => { _cursorHidden = true; Cursor = new Cursor(StandardCursorType.None); });
 
     private static unsafe Cursor CreateCursor(RemotePointer p)
     {
         fixed (byte* data = p.Bgra)
         {
-            var bmp = new Bitmap(PixelFormat.Bgra8888, AlphaFormat.Unpremul, (IntPtr)data, new PixelSize(p.Width, p.Height), new Vector(96, 96), p.Width * 4);
+            using var bmp = new Bitmap(PixelFormat.Bgra8888, AlphaFormat.Unpremul, (IntPtr)data, new PixelSize(p.Width, p.Height), new Vector(96, 96), p.Width * 4);
             return new Cursor(bmp, new PixelPoint(p.HotX, p.HotY));
         }
     }
@@ -222,15 +206,12 @@ public sealed class RdpView : Control
     private bool ToRemote(Point pt, out int rx, out int ry)
     {
         rx = ry = 0;
-        if (_bitmap is null) return false;
-        var dest = DestRect();
+        var bmp = Volatile.Read(ref _bitmap);
+        if (bmp is null) return false;
+        var dest = DestRect(bmp.PixelSize);
         if (dest.Width <= 0 || dest.Height <= 0) return false;
-        var sx = _bitmap.PixelSize.Width / dest.Width;
-        var sy = _bitmap.PixelSize.Height / dest.Height;
-        rx = (int)Math.Round((pt.X - dest.X) * sx);
-        ry = (int)Math.Round((pt.Y - dest.Y) * sy);
-        rx = Math.Clamp(rx, 0, _bitmap.PixelSize.Width - 1);
-        ry = Math.Clamp(ry, 0, _bitmap.PixelSize.Height - 1);
+        rx = Math.Clamp((int)Math.Round((pt.X - dest.X) * bmp.PixelSize.Width / dest.Width), 0, bmp.PixelSize.Width - 1);
+        ry = Math.Clamp((int)Math.Round((pt.Y - dest.Y) * bmp.PixelSize.Height / dest.Height), 0, bmp.PixelSize.Height - 1);
         return true;
     }
 
@@ -251,9 +232,7 @@ public sealed class RdpView : Control
         if (_session is null || ViewOnly) return;
         var pt = e.GetCurrentPoint(this);
         if (!ToRemote(pt.Position, out var x, out var y)) return;
-        var kind = pt.Properties.PointerUpdateKind;
-        _pressedButtons.Add(kind);
-        SendButton(kind, true, x, y);
+        SendButton(pt.Properties.PointerUpdateKind, true, x, y);
         e.Handled = true;
     }
 
@@ -263,8 +242,7 @@ public sealed class RdpView : Control
         if (_session is null || ViewOnly) return;
         var pt = e.GetCurrentPoint(this);
         if (!ToRemote(pt.Position, out var x, out var y)) return;
-        var kind = pt.Properties.PointerUpdateKind;
-        SendButton(kind, false, x, y);
+        SendButton(pt.Properties.PointerUpdateKind, false, x, y);
         e.Handled = true;
     }
 
@@ -289,8 +267,7 @@ public sealed class RdpView : Control
             PointerUpdateKind.XButton2Pressed or PointerUpdateKind.XButton2Released => RdpInput.PTR_XFLAGS_BUTTON2,
             _ => 0
         };
-        if (xflag != 0)
-            _session.SendMouseExt((ushort)(xflag | (down ? RdpInput.PTR_XFLAGS_DOWN : 0)), x, y);
+        if (xflag != 0) _session.SendMouseExt((ushort)(xflag | (down ? RdpInput.PTR_XFLAGS_DOWN : 0)), x, y);
     }
 
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
@@ -306,7 +283,7 @@ public sealed class RdpView : Control
     private void SendWheel(double delta, bool horizontal, int x, int y)
     {
         if (_session is null || Math.Abs(delta) < 0.01) return;
-        // one notch = 120 units; macOS gives fractional deltas for trackpads
+        // Avalonia: one notch = 1.0, trackpads give fractions. RDP: units of 120 per notch, 8-bit magnitude per PDU.
         var units = (int)Math.Round(delta * 120);
         if (units == 0) units = delta > 0 ? 1 : -1;
         while (units != 0)
@@ -314,11 +291,8 @@ public sealed class RdpView : Control
             var step = Math.Clamp(units, -255, 255);
             units -= step;
             ushort flags = horizontal ? RdpInput.PTR_FLAGS_HWHEEL : RdpInput.PTR_FLAGS_WHEEL;
-            var magnitude = Math.Abs(step);
-            // RDP: vertical positive = scroll up; horizontal positive = scroll right. Avalonia: Y positive = up, X positive = left? (X positive = right)
-            var negative = horizontal ? step < 0 : step < 0;
-            if (negative) flags |= RdpInput.PTR_FLAGS_WHEEL_NEGATIVE;
-            flags |= (ushort)(magnitude & 0xFF);
+            if (step < 0) flags |= RdpInput.PTR_FLAGS_WHEEL_NEGATIVE;
+            flags |= (ushort)(Math.Abs(step) & 0xFF);
             _session.SendMouse(flags, x, y);
         }
     }
@@ -330,11 +304,12 @@ public sealed class RdpView : Control
         var pk = e.PhysicalKey;
         if (pk is PhysicalKey.MetaLeft or PhysicalKey.MetaRight)
         {
+            var left = pk == PhysicalKey.MetaLeft;
             return CommandKey switch
             {
-                CommandKeyMode.Control => pk == PhysicalKey.MetaLeft ? ScanCodes.LeftControl : ScanCodes.RightControl,
-                CommandKeyMode.Alt => pk == PhysicalKey.MetaLeft ? ScanCodes.LeftAlt : ScanCodes.RightAlt,
-                _ => pk == PhysicalKey.MetaLeft ? ScanCodes.LeftWin : ScanCodes.RightWin
+                CommandKeyMode.Control => left ? ScanCodes.LeftControl : ScanCodes.RightControl,
+                CommandKeyMode.Alt => left ? ScanCodes.LeftAlt : ScanCodes.RightAlt,
+                _ => left ? ScanCodes.LeftWin : ScanCodes.RightWin
             };
         }
         return ScanCodes.TryGet(pk, out var sc) ? sc : null;
@@ -344,11 +319,10 @@ public sealed class RdpView : Control
     {
         if (_session is null || ViewOnly) { base.OnKeyDown(e); return; }
         var sc = MapKey(e);
-        if (sc is not null)
+        if (sc is { } code)
         {
-            var repeat = _pressedKeys.Contains(sc.Value);
-            _pressedKeys.Add(sc.Value);
-            _session.SendScancode(sc.Value, true, repeat);
+            var repeat = !_pressedKeys.Add(code);
+            _session.SendScancode(code, true, repeat);
             e.Handled = true;
             return;
         }
@@ -365,10 +339,10 @@ public sealed class RdpView : Control
     {
         if (_session is null || ViewOnly) { base.OnKeyUp(e); return; }
         var sc = MapKey(e);
-        if (sc is not null)
+        if (sc is { } code)
         {
-            _pressedKeys.Remove(sc.Value);
-            _session.SendScancode(sc.Value, false);
+            _pressedKeys.Remove(code);
+            _session.SendScancode(code, false);
             e.Handled = true;
             return;
         }
@@ -403,7 +377,7 @@ public sealed class RdpView : Control
 
     public void DisposeBitmap()
     {
-        _bitmap?.Dispose();
-        _bitmap = null;
+        var old = Interlocked.Exchange(ref _bitmap, null);
+        old?.Dispose();
     }
 }

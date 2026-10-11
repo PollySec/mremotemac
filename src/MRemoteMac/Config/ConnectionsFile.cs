@@ -43,7 +43,8 @@ public static class ConnectionsFile
         }
 
         var doc = new XmlDocument { XmlResolver = null };
-        doc.LoadXml(text);
+        using (var reader = XmlReader.Create(new StringReader(text), new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null }))
+            doc.Load(reader);
         var rootEl = doc.DocumentElement ?? throw new InvalidDataException("Empty connections file");
 
         var versionText = (rootEl.GetAttribute("ConfVersion") is { Length: > 0 } v ? v : "2.6").Replace(',', '.');

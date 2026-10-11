@@ -92,6 +92,47 @@
         <Style Selector="MenuItem /template/ ContentPresenter#PART_HeaderPresenter">
             <Setter Property="Margin" Value="0" />
         </Style>
+        <!-- dialog buttons: macOS-like, primary action filled with the accent colour -->
+        <Style Selector="Button.dialog">
+            <Setter Property="MinWidth" Value="88" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Padding" Value="14,0" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Background" Value="{DynamicResource MrButtonBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource MrBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+        <Style Selector="Button.dialog.primary">
+            <Setter Property="Background" Value="{DynamicResource MrAccentBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource MrAccentBrush}" />
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+        <Style Selector="Button.dialog.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#1E8AD6" />
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+        <Style Selector="Button.dialog.primary:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#0B5E9E" />
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+        <Style Selector="Button.dialog:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource MrButtonHoverBrush}" />
+        </Style>
+        <Style Selector="CheckBox">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="MinHeight" Value="24" />
+        </Style>
+        <Style Selector="AutoCompleteBox.quick /template/ TextBox#PART_TextBox">
+            <Setter Property="MinHeight" Value="22" />
+            <Setter Property="Height" Value="22" />
+            <Setter Property="Padding" Value="4,0" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="CornerRadius" Value="2" />
+        </Style>
         <Style Selector="Button.tool">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
