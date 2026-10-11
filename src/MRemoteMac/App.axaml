@@ -1,0 +1,204 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="MRemoteMac.App"
+             RequestedThemeVariant="Light">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <!-- mRemoteNG vs2015light -->
+                <ResourceDictionary x:Key="Light">
+                    <Color x:Key="MrDialogBackground">#FFEEEEF2</Color>
+                    <Color x:Key="MrDialogForeground">#FF1E1E1E</Color>
+                    <Color x:Key="MrTreeBackground">#FFF5F5F5</Color>
+                    <Color x:Key="MrTreeForeground">#FF1E1E1E</Color>
+                    <Color x:Key="MrSelectedActive">#FF3399FF</Color>
+                    <Color x:Key="MrSelectedActiveFg">#FFFFFFFF</Color>
+                    <Color x:Key="MrSelectedInactive">#FFCCCEDB</Color>
+                    <Color x:Key="MrTextBoxBackground">#FFFFFFFF</Color>
+                    <Color x:Key="MrBorder">#FFCCCEDB</Color>
+                    <Color x:Key="MrAccent">#FF007ACC</Color>
+                    <Color x:Key="MrTabBackground">#FFE7E8EC</Color>
+                    <Color x:Key="MrTabItemBackground">#FFF5F5F5</Color>
+                    <Color x:Key="MrButtonBackground">#FFECECF0</Color>
+                    <Color x:Key="MrButtonHover">#FFC9DEF5</Color>
+                    <Color x:Key="MrHeaderBackground">#FFDDDDDD</Color>
+                    <Color x:Key="MrGridLine">#FFE3E3E3</Color>
+                    <Color x:Key="MrPanelTitleBackground">#FFCCCEDB</Color>
+                    <Color x:Key="MrPanelTitleActive">#FF007ACC</Color>
+                </ResourceDictionary>
+                <!-- mRemoteNG vs2015dark -->
+                <ResourceDictionary x:Key="Dark">
+                    <Color x:Key="MrDialogBackground">#FF2D2D30</Color>
+                    <Color x:Key="MrDialogForeground">#FFF1F1F1</Color>
+                    <Color x:Key="MrTreeBackground">#FF252526</Color>
+                    <Color x:Key="MrTreeForeground">#FFF1F1F1</Color>
+                    <Color x:Key="MrSelectedActive">#FF3399FF</Color>
+                    <Color x:Key="MrSelectedActiveFg">#FFFFFFFF</Color>
+                    <Color x:Key="MrSelectedInactive">#FF3F3F46</Color>
+                    <Color x:Key="MrTextBoxBackground">#FF333337</Color>
+                    <Color x:Key="MrBorder">#FF434346</Color>
+                    <Color x:Key="MrAccent">#FF007ACC</Color>
+                    <Color x:Key="MrTabBackground">#FF1B1B1C</Color>
+                    <Color x:Key="MrTabItemBackground">#FF252526</Color>
+                    <Color x:Key="MrButtonBackground">#FF3F3F46</Color>
+                    <Color x:Key="MrButtonHover">#FF3E3E40</Color>
+                    <Color x:Key="MrHeaderBackground">#FF3F3F46</Color>
+                    <Color x:Key="MrGridLine">#FF3F3F46</Color>
+                    <Color x:Key="MrPanelTitleBackground">#FF3F3F46</Color>
+                    <Color x:Key="MrPanelTitleActive">#FF007ACC</Color>
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+            <SolidColorBrush x:Key="MrDialogBackgroundBrush" Color="{DynamicResource MrDialogBackground}" />
+            <SolidColorBrush x:Key="MrDialogForegroundBrush" Color="{DynamicResource MrDialogForeground}" />
+            <SolidColorBrush x:Key="MrTreeBackgroundBrush" Color="{DynamicResource MrTreeBackground}" />
+            <SolidColorBrush x:Key="MrTreeForegroundBrush" Color="{DynamicResource MrTreeForeground}" />
+            <SolidColorBrush x:Key="MrSelectedActiveBrush" Color="{DynamicResource MrSelectedActive}" />
+            <SolidColorBrush x:Key="MrSelectedActiveFgBrush" Color="{DynamicResource MrSelectedActiveFg}" />
+            <SolidColorBrush x:Key="MrSelectedInactiveBrush" Color="{DynamicResource MrSelectedInactive}" />
+            <SolidColorBrush x:Key="MrTextBoxBackgroundBrush" Color="{DynamicResource MrTextBoxBackground}" />
+            <SolidColorBrush x:Key="MrBorderBrush" Color="{DynamicResource MrBorder}" />
+            <SolidColorBrush x:Key="MrAccentBrush" Color="{DynamicResource MrAccent}" />
+            <SolidColorBrush x:Key="MrTabBackgroundBrush" Color="{DynamicResource MrTabBackground}" />
+            <SolidColorBrush x:Key="MrTabItemBackgroundBrush" Color="{DynamicResource MrTabItemBackground}" />
+            <SolidColorBrush x:Key="MrButtonBackgroundBrush" Color="{DynamicResource MrButtonBackground}" />
+            <SolidColorBrush x:Key="MrButtonHoverBrush" Color="{DynamicResource MrButtonHover}" />
+            <SolidColorBrush x:Key="MrHeaderBackgroundBrush" Color="{DynamicResource MrHeaderBackground}" />
+            <SolidColorBrush x:Key="MrGridLineBrush" Color="{DynamicResource MrGridLine}" />
+            <SolidColorBrush x:Key="MrPanelTitleBackgroundBrush" Color="{DynamicResource MrPanelTitleBackground}" />
+            <SolidColorBrush x:Key="MrPanelTitleActiveBrush" Color="{DynamicResource MrPanelTitleActive}" />
+        </ResourceDictionary>
+    </Application.Resources>
+
+    <Application.Styles>
+        <FluentTheme DensityStyle="Compact" />
+
+        <!-- WinForms-like compact look -->
+        <Style Selector="Window">
+            <Setter Property="Background" Value="{DynamicResource MrDialogBackgroundBrush}" />
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+        <Style Selector="Menu">
+            <Setter Property="Background" Value="{DynamicResource MrDialogBackgroundBrush}" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+        <Style Selector="Menu > MenuItem">
+            <Setter Property="Padding" Value="8,0" />
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+        <Style Selector="MenuItem">
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+        <Style Selector="MenuItem /template/ ContentPresenter#PART_HeaderPresenter">
+            <Setter Property="Margin" Value="0" />
+        </Style>
+        <Style Selector="Button.tool">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="3" />
+            <Setter Property="Margin" Value="1,0" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Width" Value="24" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.tool:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource MrButtonHoverBrush}" />
+        </Style>
+        <Style Selector="ToggleButton.tool">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="3" />
+            <Setter Property="Margin" Value="1,0" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Width" Value="24" />
+            <Setter Property="Height" Value="24" />
+        </Style>
+        <Style Selector="ToggleButton.tool:checked /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource MrSelectedInactiveBrush}" />
+        </Style>
+        <Style Selector="Border.panelTitle">
+            <Setter Property="Background" Value="{DynamicResource MrPanelTitleBackgroundBrush}" />
+            <Setter Property="Height" Value="22" />
+            <Setter Property="Padding" Value="6,0" />
+        </Style>
+        <Style Selector="Border.panelTitle TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+        <Style Selector="TreeView">
+            <Setter Property="Background" Value="{DynamicResource MrTreeBackgroundBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource MrTreeForegroundBrush}" />
+        </Style>
+        <Style Selector="TreeViewItem">
+            <Setter Property="MinHeight" Value="20" />
+            <Setter Property="Padding" Value="2,0" />
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+        <Style Selector="TreeViewItem /template/ Border#PART_LayoutRoot">
+            <Setter Property="MinHeight" Value="20" />
+        </Style>
+        <Style Selector="TreeViewItem:selected /template/ Border#PART_LayoutRoot">
+            <Setter Property="Background" Value="{DynamicResource MrSelectedActiveBrush}" />
+        </Style>
+        <Style Selector="TreeViewItem:selected /template/ Border#PART_LayoutRoot ContentPresenter#PART_HeaderPresenter">
+            <Setter Property="Foreground" Value="{DynamicResource MrSelectedActiveFgBrush}" />
+        </Style>
+        <Style Selector="TabControl.documents">
+            <Setter Property="Background" Value="{DynamicResource MrTabBackgroundBrush}" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+        <Style Selector="TabControl.documents /template/ ItemsPresenter#PART_ItemsPresenter">
+            <Setter Property="Margin" Value="0" />
+        </Style>
+        <Style Selector="TabControl.documents TabItem">
+            <Setter Property="MinHeight" Value="24" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="Padding" Value="8,0,4,0" />
+            <Setter Property="Margin" Value="0,0,1,0" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="Normal" />
+            <Setter Property="Background" Value="{DynamicResource MrTabBackgroundBrush}" />
+        </Style>
+        <Style Selector="TabControl.documents TabItem:selected">
+            <Setter Property="Background" Value="{DynamicResource MrAccentBrush}" />
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+        <Style Selector="TabControl.documents TabItem /template/ Border#PART_SelectedPipe">
+            <Setter Property="IsVisible" Value="False" />
+        </Style>
+        <Style Selector="TabControl.documents TabItem /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Margin" Value="0" />
+        </Style>
+        <Style Selector="TextBox.grid">
+            <Setter Property="MinHeight" Value="20" />
+            <Setter Property="Height" Value="20" />
+            <Setter Property="Padding" Value="3,1" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="ComboBox.grid">
+            <Setter Property="MinHeight" Value="20" />
+            <Setter Property="Height" Value="20" />
+            <Setter Property="Padding" Value="3,0" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+        </Style>
+        <Style Selector="ComboBox.grid /template/ Border#Background">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="ListBox.messages ListBoxItem">
+            <Setter Property="MinHeight" Value="20" />
+            <Setter Property="Padding" Value="4,1" />
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+    </Application.Styles>
+</Application>

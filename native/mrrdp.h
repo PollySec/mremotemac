@@ -1,0 +1,97 @@
+/*
+ * mrrdp - thin C shim around libfreerdp-client for mRemoteMac.
+ * All callbacks are invoked on the session's RDP thread.
+ * Framebuffer pointers are only valid inside on_frame / on_resize callbacks.
+ */
+#pragma once
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#define MRRDP_API __attribute__((visibility("default")))
+
+typedef struct mr_session mr_session;
+
+/* Dirty rectangle in the framebuffer has been updated. */
+typedef void (*mr_on_frame)(void* user, int32_t x, int32_t y, int32_t w, int32_t h);
+/* Framebuffer has been (re)allocated to a new size. */
+typedef void (*mr_on_resize)(void* user, int32_t w, int32_t h);
+typedef void (*mr_on_connected)(void* user);
+/* error == 0 means clean disconnect. */
+typedef void (*mr_on_disconnected)(void* user, uint32_t error, const char* name, const char* description);
+/* Return 0 = reject, 1 = accept permanently, 2 = accept for this session only. */
+typedef int32_t (*mr_on_verify_cert)(void* user, const char* host, uint16_t port,
+                                     const char* common_name, const char* subject,
+                                     const char* issuer, const char* fingerprint, uint32_t flags,
+                                     int32_t changed, const char* old_subject,
+                                     const char* old_issuer, const char* old_fingerprint);
+/* Fill the three buffers (UTF-8, NUL terminated). Return 1 = ok, 0 = cancel. */
+typedef int32_t (*mr_on_authenticate)(void* user, int32_t reason, char* username, int32_t username_cap,
+                                      char* password, int32_t password_cap, char* domain,
+                                      int32_t domain_cap);
+/* Pointer (mouse cursor) management. bgra is w*h*4 bytes, premultiplied = no. Return an opaque handle. */
+typedef void* (*mr_on_pointer_new)(void* user, int32_t w, int32_t h, int32_t hot_x, int32_t hot_y,
+                                   const uint8_t* bgra);
+typedef void (*mr_on_pointer_free)(void* user, void* handle);
+/* handle == NULL means "default system cursor". */
+typedef void (*mr_on_pointer_set)(void* user, void* handle);
+typedef void (*mr_on_pointer_hidden)(void* user);
+/* Remote side announced new clipboard text (UTF-8). */
+typedef void (*mr_on_clipboard_text)(void* user, const char* utf8);
+
+typedef struct {
+	void* user;
+	mr_on_frame on_frame;
+	mr_on_resize on_resize;
+	mr_on_connected on_connected;
+	mr_on_disconnected on_disconnected;
+	mr_on_verify_cert on_verify_cert;
+	mr_on_authenticate on_authenticate;
+	mr_on_pointer_new on_pointer_new;
+	mr_on_pointer_free on_pointer_free;
+	mr_on_pointer_set on_pointer_set;
+	mr_on_pointer_hidden on_pointer_hidden;
+	mr_on_clipboard_text on_clipboard_text;
+} mr_callbacks;
+
+MRRDP_API const char* mr_version(void);
+
+MRRDP_API mr_session* mr_session_create(const mr_callbacks* callbacks);
+MRRDP_API void mr_session_destroy(mr_session* s);
+
+/* Settings. key is the FreeRDP settings name without prefix, e.g. "ServerHostname". Return 1 ok / 0 fail. */
+MRRDP_API int32_t mr_set_string(mr_session* s, const char* key, const char* value);
+MRRDP_API int32_t mr_set_uint32(mr_session* s, const char* key, uint32_t value);
+MRRDP_API int32_t mr_set_bool(mr_session* s, const char* key, int32_t value);
+/* Parse xfreerdp-style arguments, e.g. {"mrrdp", "/sound", "/clipboard", "/dynamic-resolution"}. Return 0 ok. */
+MRRDP_API int32_t mr_parse_args(mr_session* s, int32_t argc, const char** argv);
+
+/* Start connecting on a background thread. Return 0 ok. */
+MRRDP_API int32_t mr_connect(mr_session* s);
+/* Abort/disconnect and join the thread. Safe to call multiple times. */
+MRRDP_API void mr_disconnect(mr_session* s);
+MRRDP_API int32_t mr_is_connected(mr_session* s);
+
+/* Only valid on the RDP thread (inside callbacks). Format is 32bpp BGRA. */
+MRRDP_API int32_t mr_get_framebuffer(mr_session* s, uint8_t** data, int32_t* width, int32_t* height,
+                                     int32_t* stride);
+
+/* Input. flags use the PTR_FLAGS_* / KBD_FLAGS_* values from FreeRDP. */
+MRRDP_API void mr_send_mouse(mr_session* s, uint16_t flags, uint16_t x, uint16_t y);
+MRRDP_API void mr_send_mouse_ext(mr_session* s, uint16_t flags, uint16_t x, uint16_t y);
+MRRDP_API void mr_send_scancode(mr_session* s, int32_t down, int32_t repeat, uint32_t rdp_scancode);
+MRRDP_API void mr_send_unicode(mr_session* s, int32_t down, uint16_t code);
+MRRDP_API void mr_send_sync(mr_session* s, uint32_t toggle_flags);
+MRRDP_API void mr_send_focus_in(mr_session* s, uint16_t toggle_flags);
+
+/* Dynamic resolution (requires /dynamic-resolution). Return 1 if sent. */
+MRRDP_API int32_t mr_resize_desktop(mr_session* s, uint32_t width, uint32_t height);
+
+/* Clipboard: announce local text to remote. */
+MRRDP_API int32_t mr_set_clipboard_text(mr_session* s, const char* utf8);
+
+#ifdef __cplusplus
+}
+#endif

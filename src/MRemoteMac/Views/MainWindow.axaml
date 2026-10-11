@@ -1,0 +1,261 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:conv="using:MRemoteMac.Converters"
+        xmlns:controls="using:MRemoteMac.Controls"
+        xmlns:models="using:MRemoteMac.Models"
+        x:Class="MRemoteMac.Views.MainWindow"
+        Title="{Binding Title}" Width="1129" Height="571" MinWidth="400" MinHeight="400"
+        Icon="avares://mRemoteMac/Assets/Images/mRemoteNG_Icon.png">
+    <Window.Resources>
+        <conv:NodeIconConverter x:Key="NodeIcon" />
+        <conv:AvaresImageConverter x:Key="Avares" />
+        <conv:GreaterThanZeroConverter x:Key="GtZero" />
+    </Window.Resources>
+
+    <DockPanel>
+        <!-- ===== menu ===== -->
+        <Menu DockPanel.Dock="Top" x:Name="MainMenu">
+            <MenuItem Header="_File">
+                <MenuItem Header="New Connection File" Click="OnNewFile">
+                    <MenuItem.Icon><Image Source="avares://mRemoteMac/Assets/Images/NewFile_16x.png" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="Open Connection File..." Click="OnOpenFile" HotKey="Cmd+O" InputGesture="Cmd+O">
+                    <MenuItem.Icon><Image Source="avares://mRemoteMac/Assets/Images/OpenFile_16x.png" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="Save Connection File" Click="OnSaveFile" HotKey="Cmd+S" InputGesture="Cmd+S">
+                    <MenuItem.Icon><Image Source="avares://mRemoteMac/Assets/Images/Save_16x.png" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="Save Connection File As..." Click="OnSaveFileAs" HotKey="Cmd+Shift+S" InputGesture="Cmd+Shift+S" />
+                <Separator />
+                <MenuItem Header="Set Master Password..." Click="OnSetMasterPassword">
+                    <MenuItem.Icon><Image Source="avares://mRemoteMac/Assets/Images/Key_16x.png" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="Options" Click="OnOptions">
+                    <MenuItem.Icon><Image Source="avares://mRemoteMac/Assets/Images/Settings_16x.png" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+                <Separator />
+                <MenuItem Header="Exit" Click="OnExit" HotKey="Cmd+Q" InputGesture="Cmd+Q">
+                    <MenuItem.Icon><Image Source="avares://mRemoteMac/Assets/Images/CloseSolution_16x.png" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+            </MenuItem>
+            <MenuItem Header="_Sessions">
+                <MenuItem Header="Next Session" Click="OnNextSession" HotKey="Cmd+Right" InputGesture="Cmd+Right" />
+                <MenuItem Header="Previous Session" Click="OnPreviousSession" HotKey="Cmd+Left" InputGesture="Cmd+Left" />
+                <Separator />
+                <MenuItem Header="Reconnect" Click="OnTabReconnect" />
+                <MenuItem Header="Disconnect" Click="OnTabDisconnect" HotKey="Cmd+W" InputGesture="Cmd+W" />
+                <MenuItem Header="Disconnect All" Click="OnDisconnectAll" />
+                <Separator />
+                <MenuItem Header="Send special keys">
+                    <MenuItem Header="Ctrl+Alt+Del" Click="OnSendCtrlAltDel" />
+                    <MenuItem Header="Ctrl+Esc" Click="OnSendCtrlEsc" />
+                    <MenuItem Header="Windows key" Click="OnSendWin" />
+                    <MenuItem Header="Alt+Tab" Click="OnSendAltTab" />
+                </MenuItem>
+            </MenuItem>
+            <MenuItem Header="_View">
+                <MenuItem x:Name="MenuViewNotifications" Header="Notifications" Click="OnToggleNotifications" ToggleType="CheckBox" />
+                <MenuItem x:Name="MenuViewQuickConnect" Header="Quick Connect Toolbar" Click="OnToggleQuickConnect" ToggleType="CheckBox" />
+                <Separator />
+                <MenuItem Header="Reconnect All Connections" Click="OnReconnectAll">
+                    <MenuItem.Icon><Image Source="avares://mRemoteMac/Assets/Images/Refresh_16x.png" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="Reset layout" Click="OnResetLayout" />
+                <Separator />
+                <MenuItem Header="Fullscreen" Click="OnToggleFullscreen" HotKey="F11" InputGesture="F11">
+                    <MenuItem.Icon><Image Source="avares://mRemoteMac/Assets/Images/FullScreen_16x.png" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+            </MenuItem>
+            <MenuItem Header="_Tools">
+                <MenuItem Header="Copy Hostname" Click="OnCopyHostname" />
+                <MenuItem Header="Open Connection File Folder" Click="OnOpenFileFolder" />
+            </MenuItem>
+            <MenuItem Header="_Help">
+                <MenuItem Header="mRemoteNG Documentation" Click="OnHelp" HotKey="F1" InputGesture="F1">
+                    <MenuItem.Icon><Image Source="avares://mRemoteMac/Assets/Images/F1Help_16x.png" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+                <Separator />
+                <MenuItem Header="mRemoteNG Website" Click="OnWebsite" />
+                <MenuItem Header="Report an Issue" Click="OnReportIssue" />
+                <Separator />
+                <MenuItem Header="About" Click="OnAbout">
+                    <MenuItem.Icon><Image Source="avares://mRemoteMac/Assets/Images/UIAboutBox_16x.png" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+            </MenuItem>
+        </Menu>
+
+        <!-- ===== quick connect toolbar ===== -->
+        <Border DockPanel.Dock="Top" x:Name="QuickConnectBar" Height="28" BorderThickness="0,1,0,1" BorderBrush="{DynamicResource MrBorderBrush}" Background="{DynamicResource MrDialogBackgroundBrush}">
+            <StackPanel Orientation="Horizontal" Margin="6,0" Spacing="4">
+                <TextBlock Text="Connect:" VerticalAlignment="Center" />
+                <AutoCompleteBox x:Name="QuickConnectBox" Width="220" Height="22" MinHeight="22" FontSize="12" Padding="4,0" Watermark="[user@]host[:port]" KeyDown="OnQuickConnectKeyDown" FilterMode="Contains" />
+                <Button Classes="tool" Width="52" HorizontalContentAlignment="Left" ToolTip.Tip="Connect using RDP" Click="OnQuickConnect">
+                    <StackPanel Orientation="Horizontal" Spacing="3">
+                        <Image Source="avares://mRemoteMac/Assets/Images/Run_16x.png" Width="16" Height="16" />
+                        <TextBlock Text="RDP" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <Button Classes="tool" x:Name="ConnectionsMenuButton" ToolTip.Tip="Connections" Click="OnConnectionsMenu">
+                    <Image Source="avares://mRemoteMac/Assets/Images/ASPWebSite_16x.png" Width="16" Height="16" />
+                </Button>
+            </StackPanel>
+        </Border>
+
+        <!-- ===== dock area ===== -->
+        <Grid x:Name="MainGrid" ColumnDefinitions="280,4,*" Background="{DynamicResource MrDialogBackgroundBrush}">
+            <Grid x:Name="LeftGrid" Grid.Column="0" RowDefinitions="*,4,250" Margin="2,2,0,2">
+
+                <!-- Connections panel -->
+                <DockPanel Grid.Row="0">
+                    <Border Classes="panelTitle" DockPanel.Dock="Top"><TextBlock Text="Connections" /></Border>
+                    <Border DockPanel.Dock="Top" Height="26" Background="{DynamicResource MrDialogBackgroundBrush}">
+                        <StackPanel Orientation="Horizontal" Margin="2,0">
+                            <Button Classes="tool" ToolTip.Tip="New Connection" Click="OnNewConnection"><Image Source="avares://mRemoteMac/Assets/Images/AddItem_16x.png" Width="16" Height="16" /></Button>
+                            <Button Classes="tool" ToolTip.Tip="New Folder" Click="OnNewFolder"><Image Source="avares://mRemoteMac/Assets/Images/AddFolder_16x.png" Width="16" Height="16" /></Button>
+                            <Border Width="1" Height="18" Margin="3,0" Background="{DynamicResource MrBorderBrush}" />
+                            <Button Classes="tool" ToolTip.Tip="Expand all folders" Click="OnExpandAll"><Image Source="avares://mRemoteMac/Assets/Images/ExpandAll_16x.png" Width="16" Height="16" /></Button>
+                            <Button Classes="tool" ToolTip.Tip="Collapse all folders" Click="OnCollapseAll"><Image Source="avares://mRemoteMac/Assets/Images/CollapseAll_16x.png" Width="16" Height="16" /></Button>
+                            <Button Classes="tool" x:Name="SortButton" ToolTip.Tip="Sort A-Z" Click="OnSortToggle"><Image x:Name="SortImage" Source="avares://mRemoteMac/Assets/Images/SortAscending_16x.png" Width="16" Height="16" /></Button>
+                            <Border Width="1" Height="18" Margin="3,0" Background="{DynamicResource MrBorderBrush}" />
+                            <Button Classes="tool" x:Name="FavoritesButton" ToolTip.Tip="Favorites" Click="OnFavorites"><Image Source="avares://mRemoteMac/Assets/Images/Favorite_16x.png" Width="16" Height="16" /></Button>
+                        </StackPanel>
+                    </Border>
+                    <Border DockPanel.Dock="Bottom" Height="24" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource MrBorderBrush}" Background="{DynamicResource MrTextBoxBackgroundBrush}">
+                        <DockPanel>
+                            <Image DockPanel.Dock="Left" Source="avares://mRemoteMac/Assets/Images/Search_16x.png" Width="16" Height="16" Margin="5,0" />
+                            <TextBox x:Name="SearchBox" Classes="grid" Watermark="Search" BorderThickness="0" Background="Transparent" VerticalAlignment="Center" TextChanged="OnSearchTextChanged" KeyDown="OnSearchKeyDown" />
+                        </DockPanel>
+                    </Border>
+                    <TreeView x:Name="Tree" ItemsSource="{Binding TreeRoots}" SelectedItem="{Binding SelectedNode, Mode=TwoWay}"
+                              DoubleTapped="OnTreeDoubleTapped" KeyDown="OnTreeKeyDown" Padding="0" BorderThickness="1" BorderBrush="{DynamicResource MrBorderBrush}">
+                        <TreeView.Styles>
+                            <Style Selector="TreeViewItem">
+                                <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+                            </Style>
+                        </TreeView.Styles>
+                        <TreeView.ItemTemplate>
+                            <TreeDataTemplate ItemsSource="{Binding Children}">
+                                <StackPanel Orientation="Horizontal" Height="18" Background="Transparent">
+                                    <Panel Width="16" Height="16" Margin="0,0,4,0">
+                                        <Image Source="{Binding ., Converter={StaticResource NodeIcon}}" Width="16" Height="16" />
+                                        <Image Source="avares://mRemoteMac/Assets/Images/ConnectedOverlay.png" Width="16" Height="16" IsVisible="{Binding OpenConnections, Converter={StaticResource GtZero}}" />
+                                    </Panel>
+                                    <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </TreeDataTemplate>
+                        </TreeView.ItemTemplate>
+                        <TreeView.ContextMenu>
+                            <ContextMenu x:Name="TreeMenu" Opening="OnTreeMenuOpening">
+                                <MenuItem x:Name="MiConnect" Header="Connect" Click="OnConnect" InputGesture="Cmd+Shift+C">
+                                    <MenuItem.Icon><Image Source="avares://mRemoteMac/Assets/Images/Run_16x.png" Width="16" Height="16" /></MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem x:Name="MiConnectOptions" Header="Connect (with options)">
+                                    <MenuItem Header="Connect to console session" Click="OnConnectConsole" />
+                                    <MenuItem Header="Connect in fullscreen" Click="OnConnectFullscreen" />
+                                    <MenuItem Header="Connect without credentials" Click="OnConnectNoCredentials" />
+                                    <MenuItem Header="Connect in View Only mode" Click="OnConnectViewOnly" />
+                                </MenuItem>
+                                <MenuItem x:Name="MiDisconnect" Header="Disconnect" Click="OnDisconnectNode">
+                                    <MenuItem.Icon><Image Source="avares://mRemoteMac/Assets/Images/Stop_16x.png" Width="16" Height="16" /></MenuItem.Icon>
+                                </MenuItem>
+                                <Separator />
+                                <MenuItem x:Name="MiDuplicate" Header="Duplicate" Click="OnDuplicate" InputGesture="Cmd+D">
+                                    <MenuItem.Icon><Image Source="avares://mRemoteMac/Assets/Images/Copy_16x.png" Width="16" Height="16" /></MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem x:Name="MiRename" Header="Rename" Click="OnRename" InputGesture="F2">
+                                    <MenuItem.Icon><Image Source="avares://mRemoteMac/Assets/Images/Rename_16x.png" Width="16" Height="16" /></MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem x:Name="MiDelete" Header="Delete" Click="OnDelete" InputGesture="Delete">
+                                    <MenuItem.Icon><Image Source="avares://mRemoteMac/Assets/Images/Remove_16x.png" Width="16" Height="16" /></MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem x:Name="MiCopyHostname" Header="Copy Hostname" Click="OnCopyHostname" />
+                                <MenuItem x:Name="MiInheritance" Header="Inheritance">
+                                    <MenuItem Header="Apply inheritance to children" Click="OnApplyInheritanceToChildren" />
+                                    <MenuItem Header="Apply default inheritance" Click="OnApplyDefaultInheritance" />
+                                </MenuItem>
+                                <Separator />
+                                <MenuItem Header="Import">
+                                    <MenuItem Header="from File..." Click="OnImportFile" />
+                                </MenuItem>
+                                <MenuItem Header="Export to File..." Click="OnSaveFileAs" />
+                                <Separator />
+                                <MenuItem Header="New Connection" Click="OnNewConnection">
+                                    <MenuItem.Icon><Image Source="avares://mRemoteMac/Assets/Images/AddItem_16x.png" Width="16" Height="16" /></MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="New Folder" Click="OnNewFolder">
+                                    <MenuItem.Icon><Image Source="avares://mRemoteMac/Assets/Images/AddFolder_16x.png" Width="16" Height="16" /></MenuItem.Icon>
+                                </MenuItem>
+                                <Separator />
+                                <MenuItem Header="Sort">
+                                    <MenuItem Header="Ascending (A-Z)" Click="OnSortAsc" />
+                                    <MenuItem Header="Descending (Z-A)" Click="OnSortDesc" />
+                                </MenuItem>
+                                <MenuItem x:Name="MiMoveUp" Header="Move up" Click="OnMoveUp" InputGesture="Cmd+Up" />
+                                <MenuItem x:Name="MiMoveDown" Header="Move down" Click="OnMoveDown" InputGesture="Cmd+Down" />
+                            </ContextMenu>
+                        </TreeView.ContextMenu>
+                    </TreeView>
+                </DockPanel>
+
+                <GridSplitter Grid.Row="1" Height="4" Background="Transparent" ResizeDirection="Rows" />
+
+                <!-- Config panel -->
+                <DockPanel Grid.Row="2">
+                    <Border Classes="panelTitle" DockPanel.Dock="Top"><TextBlock Text="Config" /></Border>
+                    <Border DockPanel.Dock="Top" Height="26" Background="{DynamicResource MrDialogBackgroundBrush}">
+                        <StackPanel Orientation="Horizontal" Margin="2,0">
+                            <ToggleButton Classes="tool" x:Name="PropertiesButton" IsChecked="True" ToolTip.Tip="Properties" Click="OnShowProperties"><Image Source="avares://mRemoteMac/Assets/Images/Property_16x.png" Width="16" Height="16" /></ToggleButton>
+                            <ToggleButton Classes="tool" x:Name="InheritanceButton" ToolTip.Tip="Inheritance" Click="OnShowInheritance"><Image Source="avares://mRemoteMac/Assets/Images/Schema_16x.png" Width="16" Height="16" /></ToggleButton>
+                            <Border Width="1" Height="18" Margin="3,0" Background="{DynamicResource MrBorderBrush}" />
+                            <Image x:Name="ConfigIcon" Width="16" Height="16" Margin="4,0" />
+                            <TextBlock x:Name="ConfigTitle" VerticalAlignment="Center" FontWeight="Bold" />
+                        </StackPanel>
+                    </Border>
+                    <Border BorderThickness="1" BorderBrush="{DynamicResource MrBorderBrush}">
+                        <controls:PropertyGrid x:Name="ConfigGrid" />
+                    </Border>
+                </DockPanel>
+            </Grid>
+
+            <GridSplitter Grid.Column="1" Width="4" Background="Transparent" ResizeDirection="Columns" />
+
+            <Grid Grid.Column="2" x:Name="RightGrid" RowDefinitions="*,Auto" Margin="0,2,2,2">
+                <!-- Documents -->
+                <Border Grid.Row="0" BorderThickness="1" BorderBrush="{DynamicResource MrBorderBrush}">
+                    <Panel>
+                        <TabControl x:Name="Tabs" Classes="documents" SelectionChanged="OnTabSelectionChanged" />
+                        <TextBlock x:Name="EmptyHint" Text="Double-click a connection in the tree, or use Quick Connect." Foreground="Gray" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Panel>
+                </Border>
+
+                <!-- Notifications (auto-hide style) -->
+                <DockPanel Grid.Row="1" x:Name="NotificationsPanel" Margin="0,2,0,0">
+                    <Border Classes="panelTitle" DockPanel.Dock="Top" PointerPressed="OnToggleNotifications" Cursor="Hand">
+                        <DockPanel>
+                            <Image DockPanel.Dock="Left" Source="avares://mRemoteMac/Assets/Images/Message_16x.png" Width="16" Height="16" Margin="0,0,6,0" />
+                            <TextBlock x:Name="NotificationsTitle" Text="Notifications" />
+                        </DockPanel>
+                    </Border>
+                    <ListBox x:Name="MessagesList" Classes="messages" ItemsSource="{Binding Notifications.Messages}" Height="140" IsVisible="False"
+                             Background="{DynamicResource MrTextBoxBackgroundBrush}" BorderThickness="1" BorderBrush="{DynamicResource MrBorderBrush}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <Image Source="{Binding IconPath, Converter={StaticResource Avares}}" Width="16" Height="16" />
+                                    <TextBlock Text="{Binding Display}" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                        <ListBox.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Copy" Click="OnCopyMessage" />
+                                <MenuItem Header="Delete" Click="OnDeleteMessage" />
+                                <MenuItem Header="Clear all" Click="OnClearMessages" />
+                            </ContextMenu>
+                        </ListBox.ContextMenu>
+                    </ListBox>
+                </DockPanel>
+            </Grid>
+        </Grid>
+    </DockPanel>
+</Window>
