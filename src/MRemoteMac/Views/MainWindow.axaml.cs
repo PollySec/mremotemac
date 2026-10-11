@@ -122,6 +122,7 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>Environment-driven hooks used by the automated audit and icon generation (debug builds only).</summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "Uses instance members in debug builds only.")]
     private async Task RunDevHooksAsync()
     {
 #if DEBUG
