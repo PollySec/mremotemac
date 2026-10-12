@@ -25,6 +25,8 @@ rm -rf $APP
 mkdir -p $APP/Contents/MacOS $APP/Contents/Resources
 cp -R $DIST/publish/. $APP/Contents/MacOS/
 rm -rf $APP/Contents/MacOS/*.dSYM   # debug symbols stay in dist/publish, not in the app
+# drop local symbols from the native libraries (exported symbols stay, so dlsym/LibraryImport are unaffected)
+for f in $APP/Contents/MacOS/*.dylib; do strip -x "$f"; done
 sed -e "s/__VERSION__/${VERSION%%[+-]*}/; s/__BUILD__/$BUILD/" $ROOT/packaging/Info.plist > $APP/Contents/Info.plist
 
 # icon: .icns from the 1024px app icon
