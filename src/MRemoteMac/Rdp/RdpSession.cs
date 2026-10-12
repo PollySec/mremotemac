@@ -70,6 +70,12 @@ public sealed unsafe class RdpSession : IDisposable
     public event Action? PointerHidden;                    // RDP thread
     public event Action<string>? ClipboardTextReceived;    // RDP thread
     public event Action<string>? Diagnostic;               // RDP/channel thread: clipboard channel events
+    /// <summary>The session offered files: (entries, folders, total bytes, first names). Channel thread.</summary>
+    public event Action<int, int, ulong, string>? ClipboardFilesOffered;
+    /// <summary>Download progress: (bytes done, bytes total, current file name). Channel thread.</summary>
+    public event Action<ulong, ulong, string>? ClipboardFileProgress;
+    /// <summary>Download finished: (destination directory, file count, error or null). Channel thread.</summary>
+    public event Action<string, int, string?>? ClipboardFilesDone;
     public event Action? Reconnecting;                     // RDP thread; the connection dropped, auto-reconnect in progress
 
     /// <summary>Invoked on the UI thread; default accepts the certificate for this session only.</summary>
@@ -99,6 +105,9 @@ public sealed unsafe class RdpSession : IDisposable
             on_clipboard_text = (IntPtr)(delegate* unmanaged[Cdecl]<IntPtr, IntPtr, void>)&OnClipboardText,
             on_reconnecting = (IntPtr)(delegate* unmanaged[Cdecl]<IntPtr, void>)&OnReconnecting,
             on_log = (IntPtr)(delegate* unmanaged[Cdecl]<IntPtr, IntPtr, void>)&OnLog,
+            on_clipboard_files = (IntPtr)(delegate* unmanaged[Cdecl]<IntPtr, int, int, ulong, IntPtr, void>)&OnClipboardFiles,
+            on_clipboard_progress = (IntPtr)(delegate* unmanaged[Cdecl]<IntPtr, ulong, ulong, IntPtr, void>)&OnClipboardProgress,
+            on_clipboard_files_done = (IntPtr)(delegate* unmanaged[Cdecl]<IntPtr, IntPtr, int, IntPtr, void>)&OnClipboardFilesDone,
         };
         _handle = Native.mr_session_create(ref cb);
         if (_handle == IntPtr.Zero)
@@ -183,6 +192,14 @@ public sealed unsafe class RdpSession : IDisposable
 
     public bool SetClipboardText(string? text)
         => _handle != IntPtr.Zero && Native.mr_set_clipboard_text(_handle, text) != 0;
+
+    /// <summary>Announces local files (absolute paths) to the session; the server pulls their contents on paste.</summary>
+    public bool SetClipboardFiles(IEnumerable<string> paths)
+        => _handle != IntPtr.Zero && Native.mr_set_clipboard_files(_handle, string.Join('\n', paths)) != 0;
+
+    /// <summary>Starts downloading the files the session offered into <paramref name="destDir"/>.</summary>
+    public bool FetchClipboardFiles(string destDir)
+        => _handle != IntPtr.Zero && Native.mr_clipboard_fetch_files(_handle, destDir) != 0;
 
     /// <summary>Presses all scancodes in order and releases them in reverse.</summary>
     public void SendKeyCombination(params ReadOnlySpan<uint> scancodes)
@@ -349,4 +366,16 @@ public sealed unsafe class RdpSession : IDisposable
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void OnLog(IntPtr user, IntPtr utf8) => From(user)?.Diagnostic?.Invoke(Str(utf8));
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void OnClipboardFiles(IntPtr user, int count, int folders, ulong total, IntPtr preview)
+        => From(user)?.ClipboardFilesOffered?.Invoke(count, folders, total, Str(preview));
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void OnClipboardProgress(IntPtr user, ulong done, ulong total, IntPtr name)
+        => From(user)?.ClipboardFileProgress?.Invoke(done, total, Str(name));
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void OnClipboardFilesDone(IntPtr user, IntPtr dest, int files, IntPtr error)
+        => From(user)?.ClipboardFilesDone?.Invoke(Str(dest), files, error == IntPtr.Zero ? null : Str(error));
 }

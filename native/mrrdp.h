@@ -18,6 +18,11 @@ typedef struct mr_session mr_session;
 typedef void (*mr_on_frame)(void* user, int32_t x, int32_t y, int32_t w, int32_t h);
 /* diagnostic text (clipboard channel events), UTF-8, valid only during the call */
 typedef void (*mr_on_log)(void* user, const char* message);
+/* the session offered files: count of entries, how many are folders, total bytes of the files, first names */
+typedef void (*mr_on_clipboard_files)(void* user, int32_t count, int32_t folders, uint64_t total_bytes, const char* preview);
+typedef void (*mr_on_clipboard_progress)(void* user, uint64_t done, uint64_t total, const char* current_name);
+/* error is NULL on success */
+typedef void (*mr_on_clipboard_files_done)(void* user, const char* dest_dir, int32_t files, const char* error);
 /* All dirty rectangles of one paint batch have been delivered; show the frame. */
 typedef void (*mr_on_present)(void* user);
 /* Framebuffer has been (re)allocated to a new size. */
@@ -63,6 +68,9 @@ typedef struct {
 	mr_on_clipboard_text on_clipboard_text;
 	mr_on_reconnecting on_reconnecting;
 	mr_on_log on_log;
+	mr_on_clipboard_files on_clipboard_files;
+	mr_on_clipboard_progress on_clipboard_progress;
+	mr_on_clipboard_files_done on_clipboard_files_done;
 } mr_callbacks;
 
 MRRDP_API const char* mr_version(void);
@@ -103,6 +111,10 @@ MRRDP_API int32_t mr_resize_desktop(mr_session* s, uint32_t width, uint32_t heig
 
 /* Clipboard: announce local text to remote. */
 MRRDP_API int32_t mr_set_clipboard_text(mr_session* s, const char* utf8);
+/* announces local files (absolute paths, newline separated) to the session; replaces any announced text */
+MRRDP_API int32_t mr_set_clipboard_files(mr_session* s, const char* paths_newline_separated);
+/* downloads the files the session last offered into dest_dir (created); progress via callbacks. 1 = started */
+MRRDP_API int32_t mr_clipboard_fetch_files(mr_session* s, const char* dest_dir);
 
 #ifdef __cplusplus
 }

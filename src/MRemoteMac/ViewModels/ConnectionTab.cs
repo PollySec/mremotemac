@@ -1,7 +1,9 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
+using Avalonia.Input;
 using Avalonia.Input.Platform;
+using Avalonia.Platform.Storage;
 using Avalonia.Media;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -183,6 +185,9 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
         });
         session.ClipboardTextReceived += text => Dispatcher.UIThread.Post(() => AsyncHelper.Fire(() => SetLocalClipboardAsync(text), "Clipboard"));
         session.Diagnostic += text => Dispatcher.UIThread.Post(() => Notifications.Instance.Info($"{Info.Name}: {text}"));
+        session.ClipboardFilesOffered += (count, folders, total, preview) => Dispatcher.UIThread.Post(() => { if (generation == _generation) OnClipboardFilesOffered(count, folders, total, preview); });
+        session.ClipboardFileProgress += (done, total, name) => Dispatcher.UIThread.Post(() => OnClipboardFileProgress(done, total, name));
+        session.ClipboardFilesDone += (dest, files, error) => Dispatcher.UIThread.Post(() => AsyncHelper.Fire(() => OnClipboardFilesDoneAsync(dest, files, error), "Clipboard files"));
 
         SetState(TabState.Connecting, $"Connecting to {Info.Name}...");
 
@@ -266,12 +271,89 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
         if (Session is not { IsConnected: true } || !Info.GetEffective<bool>(nameof(ConnectionInfo.RedirectClipboard))) return;
         var clip = TopLevel.GetTopLevel(View)?.Clipboard;
         if (clip is null) return;
+
+        // files take precedence: Finder puts both file URLs and a text form on the pasteboard
+        var files = await clip.TryGetFilesAsync().ConfigureAwait(true);
+        var paths = files?.Select(f => f.TryGetLocalPath()).Where(p => !string.IsNullOrEmpty(p)).Cast<string>().ToList();
+        if (paths is { Count: > 0 })
+        {
+            var key = "files:" + string.Join('\n', paths);
+            if (key == _lastLocalClipboard) return;
+            _lastLocalClipboard = key;
+            var sentFiles = Session.SetClipboardFiles(paths);
+            Notifications.Instance.Info($"{Info.Name}: Clipboard: {paths.Count} file(s) from the Mac {(sentFiles ? "announced to the session; paste there to copy them" : "kept until the channel is ready")}");
+            return;
+        }
+
         var text = await clip.TryGetTextAsync().ConfigureAwait(true);
-        if (string.IsNullOrEmpty(text)) { Notifications.Instance.Info($"{Info.Name}: Clipboard: Mac clipboard has no text"); return; }
+        if (string.IsNullOrEmpty(text)) { Notifications.Instance.Info($"{Info.Name}: Clipboard: Mac clipboard has no text or files"); return; }
         if (text == _lastLocalClipboard) return;
         _lastLocalClipboard = text;
         var sent = Session.SetClipboardText(text);
         Notifications.Instance.Info($"{Info.Name}: Clipboard: {text.Length} characters from the Mac {(sent ? "announced to the session" : "kept until the channel is ready")}");
+    }
+
+    // ----- files from the session -----
+
+    private int _fetchCounter;
+
+    private void OnClipboardFilesOffered(int count, int folders, ulong totalBytes, string preview)
+    {
+        var mb = totalBytes / (1024.0 * 1024.0);
+        var what = $"{count - folders} file(s){(folders > 0 ? $" and {folders} folder(s)" : "")} ({mb:0.#} MB): {preview}";
+        if (mb <= _settings.ClipboardFilesAutoFetchMB)
+        {
+            StartFetch(what);
+            return;
+        }
+        AsyncHelper.Fire(async () =>
+        {
+            var r = await Dialogs.Dialogs.Message(_owner, "Fetch files from the session?",
+                $"{Info.Name} copied {what}. Fetch them to this Mac now? They are put on the clipboard when done.", Dialogs.Dialogs.MsgButtons.YesNo);
+            if (r == Dialogs.Dialogs.MsgResult.Yes) StartFetch(what);
+            else Notifications.Instance.Info($"{Info.Name}: Clipboard: not fetching {what}");
+        }, "Clipboard files");
+    }
+
+    private void StartFetch(string what)
+    {
+        if (Session is null) return;
+        var dest = Path.Combine(AppSettings.ClipboardCacheDirectory, Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture), $"{Info.ConstantId[..8]}-{++_fetchCounter}");
+        if (Session.FetchClipboardFiles(dest))
+            Notifications.Instance.Info($"{Info.Name}: Clipboard: fetching {what}");
+    }
+
+    private void OnClipboardFileProgress(ulong done, ulong total, string name)
+    {
+        var pct = total > 0 ? (int)(done * 100 / total) : 0;
+        Notifications.Instance.Info($"{Info.Name}: Clipboard: {name} … {done / 1048576.0:0.#} of {total / 1048576.0:0.#} MB ({pct}%)");
+    }
+
+    private async Task OnClipboardFilesDoneAsync(string dest, int files, string? error)
+    {
+        if (error is not null)
+        {
+            Notifications.Instance.Error($"{Info.Name}: Clipboard: file transfer failed: {error}");
+            return;
+        }
+        var top = TopLevel.GetTopLevel(View);
+        if (top is null || !Directory.Exists(dest)) return;
+        var transfer = new DataTransfer();
+        var names = new List<string>();
+        foreach (var entry in Directory.EnumerateFileSystemEntries(dest).OrderBy(e => e, StringComparer.Ordinal))
+        {
+            IStorageItem? item = Directory.Exists(entry)
+                ? await top.StorageProvider.TryGetFolderFromPathAsync(new Uri(entry)).ConfigureAwait(true)
+                : await top.StorageProvider.TryGetFileFromPathAsync(new Uri(entry)).ConfigureAwait(true);
+            if (item is null) continue;
+            transfer.Add(DataTransferItem.CreateFile(item));
+            names.Add(Path.GetFileName(entry));
+        }
+        if (names.Count == 0) { Notifications.Instance.Warn($"{Info.Name}: Clipboard: nothing was received"); return; }
+        await top.Clipboard!.SetDataAsync(transfer).ConfigureAwait(true);
+        _lastLocalClipboard = "files:" + string.Join('\n', Directory.EnumerateFileSystemEntries(dest).OrderBy(e => e, StringComparer.Ordinal));
+        _lastPasteboardChange = Native.mr_pasteboard_change_count(); // our own write must not be pushed back
+        Notifications.Instance.Info($"{Info.Name}: Clipboard: {files} file(s) from the session are on the Mac clipboard ({string.Join(", ", names.Take(3))}{(names.Count > 3 ? ", …" : "")}); paste in Finder to copy them");
     }
 
     public void SendCtrlAltDel() => Session?.SendKeyCombination(ScanCodes.LeftControl, ScanCodes.LeftAlt, ScanCodes.Delete);

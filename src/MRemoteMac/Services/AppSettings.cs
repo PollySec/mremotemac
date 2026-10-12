@@ -28,6 +28,10 @@ public sealed class AppSettings
     public bool CloseTabOnDisconnect { get; set; } = true;
     public bool UseGfx { get; set; } = true;
     public bool StaticWhileConnecting { get; set; } = true;
+    /// <summary>Files copied in a session are fetched automatically up to this many MB; above it the user is asked.</summary>
+    public int ClipboardFilesAutoFetchMB { get; set; } = 256;
+    /// <summary>Where files from sessions land before they are put on the Mac clipboard.</summary>
+    public static string ClipboardCacheDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Library", "Caches", "mRemoteMac", "clipboard");
     public string QuickConnectProtocol { get; set; } = "RDP";
     public List<string> QuickConnectHistory { get; set; } = new();
     public double TreePaneWidth { get; set; } = 300;

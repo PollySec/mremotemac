@@ -3,6 +3,17 @@
 All notable changes to mRemoteMac are documented here. The format follows [Keep a Changelog](https://keepachangelog.com)
 and versions follow [Semantic Versioning](https://semver.org) via git tags (MinVer).
 
+## [1.2.0] – 2026-10-12
+
+### Added
+- **Files over the clipboard, both ways.** Copy files or folders in Finder and paste them in the session: the
+  server pulls their contents on demand (MS-RDPECLIP file streams, served by FreeRDP's own file-clipboard code, so
+  size does not matter). Copy files in the session and they are fetched to this Mac in the background (up to the
+  limit in Options ▸ RDP, 256 MB by default, larger sets ask first) and put on the Mac clipboard as files; paste in
+  Finder to copy them. Progress and the result show in the notifications panel. Remote clipboard data is locked
+  during a transfer when the server supports it.
+- Clipboard diagnostics in the notifications panel (channel ready, offered formats, requests, transfers).
+
 ## [1.1.1] – 2026-10-12
 
 ### Changed

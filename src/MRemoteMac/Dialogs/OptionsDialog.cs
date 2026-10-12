@@ -25,6 +25,7 @@ public static class OptionsDialog
         var gfx = new CheckBox { Content = "Use RDP graphics pipeline (RemoteFX / progressive codec)", IsChecked = s.UseGfx };
         var dark = new CheckBox { Content = "Dark appearance", IsChecked = s.DarkTheme };
         var noise = new CheckBox { Content = "Show analogue TV static while a session connects", IsChecked = s.StaticWhileConnecting };
+        var autoFetch = new NumericUpDown { Value = s.ClipboardFilesAutoFetchMB, Minimum = 0, Maximum = 100_000, Increment = 64, FormatString = "0", Width = 120 };
 
         var body = new StackPanel { Spacing = 8, Width = 460 };
         body.Children.Add(Heading("Keyboard"));
@@ -36,6 +37,7 @@ public static class OptionsDialog
         body.Children.Add(closeTab);
         body.Children.Add(Heading("RDP"));
         body.Children.Add(gfx);
+        body.Children.Add(new DockPanel { Children = { new TextBlock { Text = "Fetch copied files automatically up to (MB):", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0), [DockPanel.DockProperty] = Dock.Left }, autoFetch } });
         body.Children.Add(Heading("Appearance"));
         body.Children.Add(dark);
         body.Children.Add(noise);
@@ -64,6 +66,7 @@ public static class OptionsDialog
             s.UseGfx = gfx.IsChecked == true;
             s.DarkTheme = dark.IsChecked == true;
             s.StaticWhileConnecting = noise.IsChecked == true;
+            s.ClipboardFilesAutoFetchMB = (int)(autoFetch.Value ?? 256);
             saved = true;
             w.Close();
         };

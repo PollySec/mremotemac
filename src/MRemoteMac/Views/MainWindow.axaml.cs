@@ -103,8 +103,23 @@ public sealed partial class MainWindow : Window
 
     // ------------------------------------------------------------------ startup / shutdown
 
+    /// <summary>Files fetched from sessions in earlier runs are no longer on the clipboard; drop them.</summary>
+    private static void CleanClipboardCache()
+    {
+        try
+        {
+            var dir = AppSettings.ClipboardCacheDirectory;
+            if (!Directory.Exists(dir)) return;
+            var mine = Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            foreach (var sub in Directory.EnumerateDirectories(dir))
+                if (Path.GetFileName(sub) != mine) Directory.Delete(sub, recursive: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* best effort */ }
+    }
+
     private async Task OnOpenedAsync()
     {
+        CleanClipboardCache();
         await OpenInitialStoreAsync();
         _vm.SelectedNode = _vm.Root;
         FocusTree();
@@ -166,6 +181,7 @@ public sealed partial class MainWindow : Window
 
     public void ForceClose()
     {
+        _autoSaveTimer.Stop(); // nothing may try to save into a store that is about to close
         _vm.CloseStore(); // checkpoint, close the handle, zero the key
         _closing = true;
         Close();
