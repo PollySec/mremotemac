@@ -30,6 +30,7 @@
 #include <freerdp/utils/cliprdr_utils.h>
 #include <winpr/clipboard.h>
 #include <winpr/shell.h>
+#include <winpr/wlog.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <errno.h>
@@ -282,6 +283,65 @@ static void mr_logf(mr_session* s, const char* fmt, ...)
 	vsnprintf(buf, sizeof(buf), fmt, ap);
 	va_end(ap);
 	s->cb.on_log(s->cb.user, buf);
+}
+
+/* FreeRDP's own clipboard warnings ("missing entry for lockID …", "failed to open file …") name the exact step that
+ * failed, so they are forwarded to every live session's log. WLog is process-wide and carries no session context. */
+#define MR_MAX_SESSIONS 64
+static pthread_mutex_t g_sessions_lock = PTHREAD_MUTEX_INITIALIZER;
+static mr_session* g_sessions[MR_MAX_SESSIONS];
+static int g_wlog_hooked;
+
+static BOOL mr_wlog_message(const wLogMessage* msg)
+{
+	if (!msg || !msg->TextString)
+		return TRUE;
+	pthread_mutex_lock(&g_sessions_lock);
+	for (int i = 0; i < MR_MAX_SESSIONS; i++)
+		if (g_sessions[i])
+			mr_logf(g_sessions[i], "FreeRDP: %s", msg->TextString);
+	pthread_mutex_unlock(&g_sessions_lock);
+	return TRUE;
+}
+
+static void mr_register_session(mr_session* s)
+{
+	static const char* const loggers[] = { "com.freerdp.client.common.cliprdr.file", "com.freerdp.channels.cliprdr.client",
+		                                   "com.winpr.clipboard" };
+	pthread_mutex_lock(&g_sessions_lock);
+	for (int i = 0; i < MR_MAX_SESSIONS; i++)
+		if (!g_sessions[i])
+		{
+			g_sessions[i] = s;
+			break;
+		}
+	if (!g_wlog_hooked)
+	{
+		g_wlog_hooked = 1;
+		for (size_t i = 0; i < sizeof(loggers) / sizeof(loggers[0]); i++)
+		{
+			wLog* l = WLog_Get(loggers[i]);
+			if (!l || !WLog_SetLogAppenderType(l, WLOG_APPENDER_CALLBACK))
+				continue;
+			wLogAppender* a = WLog_GetLogAppender(l);
+			wLogCallbacks cb = { 0 };
+			cb.message = mr_wlog_message;
+			if (a)
+				(void)WLog_ConfigureAppender(a, "callbacks", &cb);
+			if (WLog_GetLogLevel(l) > WLOG_WARN)
+				(void)WLog_SetLogLevel(l, WLOG_WARN);
+		}
+	}
+	pthread_mutex_unlock(&g_sessions_lock);
+}
+
+static void mr_unregister_session(mr_session* s)
+{
+	pthread_mutex_lock(&g_sessions_lock);
+	for (int i = 0; i < MR_MAX_SESSIONS; i++)
+		if (g_sessions[i] == s)
+			g_sessions[i] = NULL;
+	pthread_mutex_unlock(&g_sessions_lock);
 }
 
 /* ---------- clipboard: text and files (MS-RDPECLIP) ---------- */
@@ -1379,6 +1439,7 @@ mr_session* mr_session_create(const mr_callbacks* callbacks)
 	((mrContext*)context)->session = s;
 	s->context = context;
 	s->instance = context->instance;
+	mr_register_session(s);
 	return s;
 }
 
@@ -1386,6 +1447,7 @@ void mr_session_destroy(mr_session* s)
 {
 	if (!s)
 		return;
+	mr_unregister_session(s);
 	mr_disconnect(s);
 	if (s->context)
 		freerdp_client_context_free(s->context);
