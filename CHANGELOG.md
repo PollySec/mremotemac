@@ -3,7 +3,7 @@
 All notable changes to mRemoteMac are documented here. The format follows [Keep a Changelog](https://keepachangelog.com)
 and versions follow [Semantic Versioning](https://semver.org) via git tags (MinVer).
 
-## [Unreleased]
+## [1.0.1] – 2026-10-12
 
 ### Changed
 - The app is now compiled ahead of time (.NET NativeAOT): one native executable plus the native libraries, no
