@@ -33,6 +33,8 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
     private string? _lastLocalClipboard;
     private long _lastPasteboardChange = -1;
     private readonly DispatcherTimer _clipboardTimer;
+    private readonly DispatcherTimer _idleTimer;
+    private readonly Border _frame;
     private int _generation; // guards late events from a replaced session
 
     [ObservableProperty] private string _title;
@@ -75,7 +77,10 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
                 Children = { _overlayText, _reconnectButton }
             }
         };
-        Content = new Panel { Children = { View, _noise, _overlay } };
+        _frame = new Border { Child = new Panel { Children = { View, _noise, _overlay } }, BorderThickness = new Thickness(0) };
+        ApplyFrameColor();
+        Content = new Panel { Children = { _frame } };
+        _idleTimer = new DispatcherTimer(TimeSpan.FromSeconds(15), DispatcherPriority.Background, (_, _) => CheckIdle());
         View.GotFocus += (_, _) => AsyncHelper.Fire(PushLocalClipboardAsync, "Clipboard");
         // macOS has no clipboard-change notification: poll NSPasteboard.changeCount (an integer read) while connected
         // and push new local text to the session, so copy on the Mac then paste in the session just works.
@@ -148,12 +153,14 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
             View.Focus();
             _lastPasteboardChange = Native.mr_pasteboard_change_count();
             if (Info.GetEffective<bool>(nameof(ConnectionInfo.RedirectClipboard))) _clipboardTimer.Start();
+            if (Info.GetEffective<int>(nameof(ConnectionInfo.RdpMinutesToIdleTimeout)) > 0) _idleTimer.Start();
             Notifications.Instance.Info($"Connected to {Info.Name} ({Info.GetEffective<string>(nameof(ConnectionInfo.Hostname))})");
         });
         session.Disconnected += (err, text) => Dispatcher.UIThread.Post(() =>
         {
             if (generation != _generation) return;
             _clipboardTimer.Stop();
+            _idleTimer.Stop();
             if (State == TabState.Connected && Info.OpenConnections > 0) Info.OpenConnections--;
             if (RdpSession.IsCleanDisconnect(err, session.LastErrorName))
             {
@@ -210,6 +217,40 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
         _lastPasteboardChange = Native.mr_pasteboard_change_count(); // our own write must not be pushed back
     }
 
+    /// <summary>Colors for "Connection Frame Color"; the same hues the status palette uses so they fit both themes.</summary>
+    private static readonly Dictionary<ConnectionFrameColor, Color> FrameColors = new()
+    {
+        [ConnectionFrameColor.Red] = Color.Parse("#D9534F"), [ConnectionFrameColor.Yellow] = Color.Parse("#E8B931"),
+        [ConnectionFrameColor.Green] = Color.Parse("#3DA35D"), [ConnectionFrameColor.Blue] = Color.Parse("#4464D3"),
+        [ConnectionFrameColor.Purple] = Color.Parse("#8E5BD1"),
+    };
+
+    /// <summary>Applies the connection's frame color (call again after the property changes).</summary>
+    public void ApplyFrameColor()
+    {
+        var color = Info.GetEffective<ConnectionFrameColor>(nameof(ConnectionInfo.ConnectionFrameColor));
+        var on = FrameColors.TryGetValue(color, out var c);
+        _frame.BorderThickness = new Thickness(on ? 3 : 0);
+        _frame.BorderBrush = on ? new SolidColorBrush(c) : null;
+    }
+
+    /// <summary>mRemoteNG semantics: after N minutes without input the session is closed, optionally with a message.</summary>
+    private void CheckIdle()
+    {
+        var minutes = Info.GetEffective<int>(nameof(ConnectionInfo.RdpMinutesToIdleTimeout));
+        if (minutes <= 0 || State != TabState.Connected) { _idleTimer.Stop(); return; }
+        if (DateTime.UtcNow - View.LastInputUtc < TimeSpan.FromMinutes(minutes)) return;
+        _idleTimer.Stop();
+        AsyncHelper.Fire(async () =>
+        {
+            await DisposeSessionAsync().ConfigureAwait(true);
+            SetState(TabState.Disconnected, $"Disconnected from {Info.Name} after {minutes} min without input.");
+            Notifications.Instance.Info($"{Info.Name}: disconnected due to inactivity ({minutes} min).");
+            if (Info.GetEffective<bool>(nameof(ConnectionInfo.RdpAlertIdleTimeout)))
+                await Dialogs.Dialogs.Message(_owner, "Session Disconnected", $"The {Info.Name} session was disconnected due to inactivity.", Dialogs.Dialogs.MsgButtons.Ok);
+        }, "Idle timeout");
+    }
+
     private void PollLocalClipboard()
     {
         var count = Native.mr_pasteboard_change_count();
@@ -242,6 +283,7 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
         var s = Session;
         if (s is null) return;
         _clipboardTimer.Stop();
+        _idleTimer.Stop();
         _generation++;
         Session = null;
         View.Session = null;

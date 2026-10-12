@@ -108,7 +108,7 @@ public static class ConnectionsFile
         var isContainer = typeText.Equals("Container", StringComparison.OrdinalIgnoreCase);
         ConnectionInfo node = isContainer ? new ContainerInfo() : new ConnectionInfo();
 
-        var props = ConnectionInfo.GridProperties.ToDictionary(p => p.Name, StringComparer.OrdinalIgnoreCase);
+        var props = ConnectionInfo.FileProperties.ToDictionary(p => p.Name, StringComparer.OrdinalIgnoreCase);
         var aliases = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["Descr"] = "Description", ["ConnectToConsole"] = "UseConsoleSession",

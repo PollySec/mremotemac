@@ -12,6 +12,11 @@ and versions follow [Semantic Versioning](https://semver.org) via git tags (MinV
 - The macOS application menu is titled "mRemoteMac" instead of Avalonia's default.
 
 ### Added
+- Every property in the config panel now does something: idle timeout (with optional alert) disconnects after N
+  minutes without input, Tab Color colours the tab marker, Connection Frame Color frames the session, Sound Quality
+  is passed to the audio channel. Each property has help text in the panel. Fields without an equivalent in
+  mRemoteMac (Panel, RDP Version, Enhanced Mode, Key Combinations, external tools) are hidden from the panel but
+  kept untouched in the connection file.
 - Clipboard: text copied on the Mac is pushed to the session automatically (NSPasteboard change polling while
   connected, not only when the session view gains focus), and new / quick-connect connections have clipboard
   redirection on by default. Text copied in the session already landed on the Mac clipboard.

@@ -40,6 +40,9 @@ public sealed class RdpView : Control, IRdpFrameTarget
     public CommandKeyMode CommandKey { get; set; } = CommandKeyMode.Control;
     public bool ViewOnly { get; set; }
 
+    /// <summary>Last mouse or keyboard activity in the view (UI thread); drives the idle timeout.</summary>
+    public DateTime LastInputUtc { get; private set; } = DateTime.UtcNow;
+
     /// <summary>Frames presented so far (diagnostics).</summary>
     public long FrameCount => Interlocked.Read(ref _frames);
 
@@ -250,6 +253,7 @@ public sealed class RdpView : Control, IRdpFrameTarget
 
     protected override void OnPointerMoved(PointerEventArgs e)
     {
+        LastInputUtc = DateTime.UtcNow;
         base.OnPointerMoved(e);
         if (_session is null || ViewOnly) return;
         if (!ToRemote(e.GetPosition(this), out var x, out var y)) return;
@@ -262,6 +266,7 @@ public sealed class RdpView : Control, IRdpFrameTarget
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
+        LastInputUtc = DateTime.UtcNow;
         base.OnPointerPressed(e);
         Focus();
         if (_session is null || ViewOnly) return;
@@ -307,6 +312,7 @@ public sealed class RdpView : Control, IRdpFrameTarget
 
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
     {
+        LastInputUtc = DateTime.UtcNow;
         base.OnPointerWheelChanged(e);
         if (_session is null || ViewOnly) return;
         if (!ToRemote(e.GetPosition(this), out var x, out var y)) return;
@@ -355,6 +361,7 @@ public sealed class RdpView : Control, IRdpFrameTarget
 
     protected override void OnKeyDown(KeyEventArgs e)
     {
+        LastInputUtc = DateTime.UtcNow;
         if (_session is null || ViewOnly) { base.OnKeyDown(e); return; }
         var sc = MapKey(e);
         if (sc is { } code)

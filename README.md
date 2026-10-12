@@ -83,6 +83,7 @@ size of the tab (dynamic resolution), **SmartSize** scales a fixed desktop to fi
 | RDP core, TLS, NLA/CredSSP, certificate prompts, dynamic resolution, cursors, clipboard text | ✅ verified end-to-end against FreeRDP's test server |
 | Clipboard: text both ways (Mac ⇄ session), on by default for new connections | ✅ `Redirect ▸ Clipboard` per connection; files and images are not transferred |
 | Windows Server / Windows 11 hosts, RD Gateway, audio, drive/printer redirection | ⚠️ implemented through FreeRDP; please report what you see |
+| Connection properties | ✅ every property shown in the config panel is wired (idle timeout, tab and frame colours, sound quality, drives, gateway, …) and has help text; Panel, RDP Version, Enhanced Mode, Key Combinations and external tools have no equivalent here, so they are hidden but preserved in the file |
 | Protocols other than RDP (SSH, VNC, HTTP, …) | ❌ by design; entries are kept in the file untouched, shown dimmed and cannot be opened |
 | Intel Macs | ❌ arm64 only |
 

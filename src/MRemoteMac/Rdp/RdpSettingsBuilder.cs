@@ -109,7 +109,7 @@ public static class RdpSettingsBuilder
         switch (Eff<RdpSounds>(nameof(ConnectionInfo.RedirectSound)))
         {
             case RdpSounds.BringToThisComputer:
-                args.Add("/sound");
+                args.Add($"/sound:quality:{Eff<RdpSoundQuality>(nameof(ConnectionInfo.SoundQuality)).ToString().ToLowerInvariant()}");
                 args.Add("/audio-mode:0");
                 break;
             case RdpSounds.LeaveAtRemoteComputer: args.Add("/audio-mode:1"); break;

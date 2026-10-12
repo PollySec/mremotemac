@@ -67,6 +67,12 @@ public sealed partial class MainWindow : Window
             _vm.MarkDirty();
             if (prop is nameof(ConnectionInfo.Icon) or nameof(ConnectionInfo.Name)) UpdateConfigHeader();
             if (prop == nameof(ConnectionInfo.Protocol)) Selected?.NotifySupportChanged(); // covers inheritance toggles and folders
+            if (prop is nameof(ConnectionInfo.TabColor) or nameof(ConnectionInfo.ConnectionFrameColor))
+                foreach (var t in _vm.Tabs.Where(t => t.Info == Selected))
+                {
+                    t.ApplyFrameColor();
+                    if (Tabs.Items.OfType<TabItem>().FirstOrDefault(i => i.Tag == t) is { } ti) ApplyTabColor(ti, t);
+                }
             ScheduleAutoSave();
         };
         Notifications.Instance.MessageAdded += m =>
@@ -782,10 +788,28 @@ public sealed partial class MainWindow : Window
         tab.StateChanged += UpdateTabHeader;
         _vm.Tabs.Add(tab);
         var item = new TabItem { Content = tab.Content, Tag = tab, Header = BuildTabHeader(tab), ContextMenu = BuildTabContextMenu(tab) };
+        ApplyTabColor(item, tab);
         Tabs.Items.Add(item);
         Tabs.SelectedItem = item;
         UpdateEmptyHint();
         await tab.ConnectAsync();
+    }
+
+    /// <summary>"Tab Color": the tab's top marker takes the colour (mRemoteNG stores #RRGGBB or a colour name).</summary>
+    private static void ApplyTabColor(TabItem item, ConnectionTab tab)
+    {
+        item.Styles.Clear();
+        var text = tab.Info.GetEffective<string>(nameof(ConnectionInfo.TabColor));
+        if (string.IsNullOrWhiteSpace(text) || !Avalonia.Media.Color.TryParse(text.Trim(), out var color)) return;
+        var brush = new Avalonia.Media.SolidColorBrush(color);
+        // The theme's ":selected" rule sets the accent at StyleTrigger priority, so a plain style would lose
+        // on the selected tab: add one rule per state.
+        foreach (var selected in new[] { false, true })
+        {
+            var style = new Style(x => (selected ? x.OfType<TabItem>().Class(":selected") : x.OfType<TabItem>()).Template().OfType<Border>().Name("PART_LayoutRoot"));
+            style.Setters.Add(new Setter(Border.BorderBrushProperty, brush));
+            item.Styles.Add(style);
+        }
     }
 
     private StackPanel BuildTabHeader(ConnectionTab tab)
