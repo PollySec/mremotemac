@@ -159,6 +159,7 @@
                                     <TextBox x:Name="SearchBox" Classes="grid" Watermark="Search connections" BorderThickness="0" Background="Transparent" VerticalAlignment="Center" Padding="0" TextChanged="OnSearchTextChanged" KeyDown="OnSearchKeyDown" />
                                 </DockPanel>
                             </Border>
+                            <Panel>
                             <TreeView x:Name="Tree" Focusable="True" ItemsSource="{Binding TreeRoots}" SelectedItem="{Binding SelectedNode, Mode=TwoWay}"
                                       DoubleTapped="OnTreeDoubleTapped" KeyDown="OnTreeKeyDown">
                                 <TreeView.Styles>
@@ -237,6 +238,9 @@
                                     </ContextMenu>
                                 </TreeView.ContextMenu>
                             </TreeView>
+                            <!-- drag-and-drop indicator lives here, exactly over the tree (see MainWindow.TreeDrag.cs) -->
+                            <Panel x:Name="TreeOverlay" IsHitTestVisible="False" />
+                            </Panel>
                         </DockPanel>
                     </Border>
                 </DockPanel>

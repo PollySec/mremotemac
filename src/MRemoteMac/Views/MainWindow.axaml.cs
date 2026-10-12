@@ -40,6 +40,7 @@ public sealed partial class MainWindow : Window
         _vm = new MainViewModel(_settings);
         DataContext = _vm;
         InitializeComponent();
+        InitTreeDrag();
         Icon = AppIcon.Window;
 
         Width = _settings.WindowWidth;

@@ -186,6 +186,38 @@ public sealed partial class MainViewModel : ObservableObject
         MarkDirty();
     }
 
+    /// <summary>A node may move anywhere except onto itself, into its own subtree, or away from the root node.</summary>
+    public static bool CanMoveTo(ConnectionInfo node, ContainerInfo target)
+    {
+        if (node is RootNodeInfo || node.Parent is null || ReferenceEquals(node, target)) return false;
+        for (ContainerInfo? p = target; p is not null; p = p.Parent)
+            if (ReferenceEquals(p, node)) return false;
+        return true;
+    }
+
+    /// <summary>
+    /// Moves <paramref name="node"/> under <paramref name="target"/> at <paramref name="index"/> (in the target's
+    /// current child list, i.e. before the node is taken out of its old place). Returns false when nothing changed.
+    /// </summary>
+    public bool MoveTo(ConnectionInfo node, ContainerInfo target, int index)
+    {
+        if (!CanMoveTo(node, target)) return false;
+        var old = node.Parent!;
+        var oldIndex = old.Children.IndexOf(node);
+        index = Math.Clamp(index, 0, target.Children.Count);
+        if (ReferenceEquals(old, target))
+        {
+            if (index > oldIndex) index--; // taking the node out shifts what follows
+            if (index == oldIndex) return false;
+            old.Children.Move(oldIndex, index);
+        }
+        else
+            target.AddChild(node, index);
+        target.IsExpanded = true;
+        MarkDirty();
+        return true;
+    }
+
     public void Sort(bool ascending)
     {
         SortAscending = ascending;

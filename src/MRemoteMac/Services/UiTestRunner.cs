@@ -80,6 +80,9 @@ public sealed class UiTestRunner : IDisposable
             case "rclick": await Click(arg, MouseButton.Right, 1); break;
             case "dblclick": await Click(arg, MouseButton.Left, 2); break;
             case "move": await Move(arg); break;
+            case "drag": await Drag(arg); await DragEnd(); break;
+            case "dragstart": await Drag(arg); break;   // leaves the button down (for a screenshot of the indicator)
+            case "dragend": await DragEnd(); break;
             case "key": await Key(arg); break;
             case "type": await TypeText(arg); break;
             case "cell": await Cell(arg); break;
@@ -223,6 +226,46 @@ public sealed class UiTestRunner : IDisposable
         else (win, pt) = CenterOf(Find(target));
         _raw.Pointer(win, RawPointerEventType.Move, pt, RawInputModifiers.None);
         await Task.Delay(100);
+    }
+
+    /// <summary>drag @From @To [into|before|after]: press on From, move in steps, release over To.</summary>
+    private async Task Drag(string arg)
+    {
+        var parts = arg.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var toIdx = Array.FindLastIndex(parts, p => p.StartsWith('@') || p.StartsWith('#'));
+        var mode = toIdx < parts.Length - 1 ? parts[^1] : "into";
+        if (toIdx < parts.Length - 1) parts = parts[..^1];
+        var from = string.Join(' ', parts[..toIdx]);
+        var to = string.Join(' ', parts[toIdx..]);
+        var (win, a) = CenterOf(Find(from));
+        var toControl = Find(to);
+        var (_, b) = CenterOf(toControl);
+        var h = toControl.Bounds.Height;
+        if (mode == "before") b = new Point(b.X, b.Y - h / 2 + 2);
+        else if (mode == "after") b = new Point(b.X, b.Y + h / 2 - 2);
+        _raw.Pointer(win, RawPointerEventType.Move, a, RawInputModifiers.None);
+        _raw.Pointer(win, RawPointerEventType.LeftButtonDown, a, RawInputModifiers.LeftMouseButton);
+        await Task.Delay(60);
+        const int steps = 12;
+        for (var i = 1; i <= steps; i++)
+        {
+            var p = new Point(a.X + (b.X - a.X) * i / steps, a.Y + (b.Y - a.Y) * i / steps);
+            _raw.Pointer(win, RawPointerEventType.Move, p, RawInputModifiers.LeftMouseButton);
+            await Task.Delay(30);
+        }
+        await Task.Delay(150);
+        _dragEnd = (win, b);
+        Log($"  drag {from} -> {to} ({mode}) @ {a.X:0},{a.Y:0} -> {b.X:0},{b.Y:0}");
+    }
+
+    private (Window win, Point pt)? _dragEnd;
+
+    private async Task DragEnd()
+    {
+        if (_dragEnd is not { } d) return;
+        _dragEnd = null;
+        _raw.Pointer(d.win, RawPointerEventType.LeftButtonUp, d.pt, RawInputModifiers.None);
+        await Task.Delay(300);
     }
 
     private async Task Key(string arg)

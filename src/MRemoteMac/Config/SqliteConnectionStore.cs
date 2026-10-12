@@ -311,11 +311,13 @@ public sealed partial class SqliteConnectionStore : IConnectionStore
         var next = after.ToDictionary(r => r.Id, StringComparer.Ordinal);
         var added = after.Where(r => !prev.ContainsKey(r.Id)).Select(r => r.Name).ToList();
         var removed = before.Where(r => !next.ContainsKey(r.Id)).Select(r => r.Name).ToList();
-        var changed = after.Where(r => prev.TryGetValue(r.Id, out var p) && (p.ParentId != r.ParentId || !p.Attributes.SequenceEqual(r.Attributes))).Select(r => r.Name).ToList();
+        var changed = after.Where(r => prev.TryGetValue(r.Id, out var p) && !p.Attributes.SequenceEqual(r.Attributes)).Select(r => r.Name).ToList();
+        var relocated = after.Where(r => prev.TryGetValue(r.Id, out var p) && p.ParentId != r.ParentId && p.Attributes.SequenceEqual(r.Attributes)).Select(r => r.Name).ToList();
         var moved = after.Count(r => prev.TryGetValue(r.Id, out var p) && p.ParentId == r.ParentId && p.Position != r.Position && p.Attributes.SequenceEqual(r.Attributes));
         var parts = new List<string>();
         if (added.Count > 0) parts.Add("Added " + Names(added));
         if (changed.Count > 0) parts.Add("Changed " + Names(changed));
+        if (relocated.Count > 0) parts.Add("Moved " + Names(relocated));
         if (removed.Count > 0) parts.Add("Removed " + Names(removed));
         if (moved > 0) parts.Add(moved == 1 ? "Reordered 1 item" : $"Reordered {moved} items");
         return parts.Count == 0 ? "No changes" : string.Join("; ", parts);

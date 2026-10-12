@@ -3,6 +3,15 @@
 All notable changes to mRemoteMac are documented here. The format follows [Keep a Changelog](https://keepachangelog.com)
 and versions follow [Semantic Versioning](https://semver.org) via git tags (MinVer).
 
+## [Unreleased]
+
+### Added
+- **Drag and drop in the connection tree.** Press on a connection or folder and drag: a chip with its icon and name
+  follows the pointer, an insertion line shows where it lands between rows, a highlighted row means "into this
+  folder", and a dashed red outline marks drops that are not allowed (a folder into its own subtree). Hovering a
+  collapsed folder opens it, the tree scrolls near its edges, Escape cancels. The move is recorded as "Moved …" in
+  the history. Cmd+Up/Down still reorder within a folder.
+
 ## [1.2.1] – 2026-10-12
 
 ### Changed
