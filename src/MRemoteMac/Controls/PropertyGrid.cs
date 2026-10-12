@@ -1,3 +1,4 @@
+using MRemoteMac.Services;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
@@ -67,7 +68,7 @@ public sealed partial class PropertyRow : GridRow
             // Only RDP can be opened; keep the current value selectable so imported nodes still display their protocol.
             if (!IsInheritanceRow && Property.Name == nameof(ConnectionInfo.Protocol))
                 return Value is ProtocolType cur && cur != ProtocolType.RDP ? [ProtocolType.RDP, cur] : [ProtocolType.RDP];
-            return Enum.GetValues(EditorType).Cast<object>();
+            return EnumHelper.Values(EditorType);
         }
     }
     public static IEnumerable<string> BoolValues { get; } = new[] { "True", "False" };

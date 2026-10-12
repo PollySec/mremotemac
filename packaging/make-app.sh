@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Builds a self-contained arm64 mRemoteMac.app (plus .zip and .dmg) in ./dist
+# Builds a NativeAOT arm64 mRemoteMac.app (plus .zip and .dmg) in ./dist. Needs Xcode command line tools (clang).
 set -e
 ROOT=${0:A:h:h}
 DIST=$ROOT/dist
@@ -14,14 +14,17 @@ VERSION=$(dotnet msbuild $PROJ -t:MinVer -getProperty:MinVerVersion -p:Configura
 BUILD=$(git -C $ROOT rev-list --count HEAD)
 echo "==> version $VERSION (build $BUILD)"
 
-echo "==> dotnet publish ($CONF)"
+echo "==> dotnet publish ($CONF, NativeAOT)"
+# NativeAOT: one native executable plus the native libraries, no .NET runtime or IL in the bundle.
+rm -rf $DIST/publish
 dotnet publish $PROJ -c $CONF -r osx-arm64 --self-contained true \
-  -p:PublishReadyToRun=true -p:PublishSingleFile=false -p:DebugType=none -o $DIST/publish >/dev/null
+  -p:PublishAot=true -p:PublishReadyToRun=false -p:DebugType=none -o $DIST/publish >/dev/null
 
 echo "==> bundle"
 rm -rf $APP
 mkdir -p $APP/Contents/MacOS $APP/Contents/Resources
 cp -R $DIST/publish/. $APP/Contents/MacOS/
+rm -rf $APP/Contents/MacOS/*.dSYM   # debug symbols stay in dist/publish, not in the app
 sed -e "s/__VERSION__/${VERSION%%[+-]*}/; s/__BUILD__/$BUILD/" $ROOT/packaging/Info.plist > $APP/Contents/Info.plist
 
 # icon: .icns from the 1024px app icon

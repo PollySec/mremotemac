@@ -2,7 +2,10 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:conv="using:MRemoteMac.Converters"
         xmlns:c="using:MRemoteMac.Controls"
-        x:Class="MRemoteMac.Views.MainWindow"
+        xmlns:vm="using:MRemoteMac.ViewModels"
+        xmlns:m="using:MRemoteMac.Models"
+        xmlns:svc="using:MRemoteMac.Services"
+        x:Class="MRemoteMac.Views.MainWindow" x:DataType="vm:MainViewModel"
         Title="{Binding Title}" Width="1180" Height="720" MinWidth="640" MinHeight="420">
     <Window.Resources>
         <conv:NodeIconConverter x:Key="NodeIcon" />
@@ -157,7 +160,7 @@
                             <TreeView x:Name="Tree" Focusable="True" ItemsSource="{Binding TreeRoots}" SelectedItem="{Binding SelectedNode, Mode=TwoWay}"
                                       DoubleTapped="OnTreeDoubleTapped" KeyDown="OnTreeKeyDown">
                                 <TreeView.Styles>
-                                    <Style Selector="TreeViewItem">
+                                    <Style Selector="TreeViewItem" x:DataType="m:ConnectionInfo">
                                         <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
                                     </Style>
                                     <Style Selector="StackPanel.unsupported c|Icon, StackPanel.unsupported TextBlock">
@@ -165,7 +168,7 @@
                                     </Style>
                                 </TreeView.Styles>
                                 <TreeView.ItemTemplate>
-                                    <TreeDataTemplate ItemsSource="{Binding Children}">
+                                    <TreeDataTemplate ItemsSource="{Binding Children}" x:DataType="m:ConnectionInfo">
                                         <StackPanel Orientation="Horizontal" Height="22" Background="Transparent" Spacing="7"
                                                     Classes.unsupported="{Binding !IsSupported}" ToolTip.Tip="{Binding UnsupportedHint}">
                                             <Panel Width="16" Height="16" VerticalAlignment="Center">
@@ -290,7 +293,7 @@
                     <Border x:Name="NotificationsBody" Classes="panelBody" Height="150" IsVisible="False">
                         <ListBox x:Name="MessagesList" Classes="messages" ItemsSource="{Binding Notifications.Messages}">
                             <ListBox.ItemTemplate>
-                                <DataTemplate>
+                                <DataTemplate x:DataType="svc:NotificationMessage">
                                     <StackPanel Orientation="Horizontal" Spacing="8">
                                         <c:Icon Glyph="{Binding IconName}" Foreground="{Binding Class, Converter={StaticResource MessageBrush}}" Size="14" VerticalAlignment="Center" />
                                         <TextBlock Text="{Binding TimeText}" Classes="caption" VerticalAlignment="Center" Width="56" />

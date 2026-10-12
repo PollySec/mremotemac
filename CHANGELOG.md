@@ -5,6 +5,12 @@ and versions follow [Semantic Versioning](https://semver.org) via git tags (MinV
 
 ## [Unreleased]
 
+### Changed
+- The app is now compiled ahead of time (.NET NativeAOT): one native executable plus the native libraries, no
+  .NET runtime or IL in the bundle. The bundle shrinks from 152 MB to about 53 MB and starts faster. The code is
+  trim-clean (compiled bindings, source-generated JSON settings, no runtime reflection over connection properties).
+- The macOS application menu is titled "mRemoteMac" instead of Avalonia's default.
+
 ### Added
 - Analogue TV static behind the "Connecting…" overlay while a session is being established (Options ▸ Appearance
   to turn it off). Rendered into a small bitmap at 25 fps only while visible, so idle tabs cost nothing.

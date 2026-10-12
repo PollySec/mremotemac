@@ -122,8 +122,10 @@ public sealed partial class MainWindow : Window
         await RunDevHooksAsync();
     }
 
-    /// <summary>Environment-driven hooks used by the automated audit and icon generation (debug builds only).</summary>
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "Uses instance members in debug builds only.")]
+    /// <summary>
+    /// Environment-driven hooks. The scripted UI runner and icon rendering are debug-only; the simple
+    /// select / connect / screenshot hooks also exist in release builds so a published bundle can be smoke-tested.
+    /// </summary>
     private async Task RunDevHooksAsync()
     {
 #if DEBUG
@@ -139,6 +141,7 @@ public sealed partial class MainWindow : Window
             await UiTestRunner.Run(this, script, Environment.GetEnvironmentVariable("MRM_OUT") ?? Path.Combine(Path.GetDirectoryName(script)!, "out"));
             return;
         }
+#endif
         if (Environment.GetEnvironmentVariable("MRM_SELECT") is { Length: > 0 } selName &&
             _vm.Root.Descendants().FirstOrDefault(n => n.Name == selName) is { } selNode)
             SelectNode(selNode);
@@ -154,9 +157,6 @@ public sealed partial class MainWindow : Window
             SaveScreenshot(shot);
             if (Environment.GetEnvironmentVariable("MRM_EXIT") == "1") ForceClose();
         }
-#else
-        await Task.CompletedTask;
-#endif
     }
 
     public void SaveScreenshot(string path)

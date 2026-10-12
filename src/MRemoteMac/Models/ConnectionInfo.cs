@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Collections.Frozen;
 using System.Reflection;
 using CommunityToolkit.Mvvm.ComponentModel;
 
@@ -200,10 +201,17 @@ public partial class ConnectionInfo : ObservableObject
     public bool Inherits(string propertyName) => Inheritance.Contains(propertyName) && InheritanceActive;
 
     /// <summary>Effective value after inheritance resolution.</summary>
+    private static readonly System.Collections.Frozen.FrozenDictionary<string, PropertyInfo> PropertyMap =
+        typeof(ConnectionInfo).GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .ToDictionary(p => p.Name, StringComparer.Ordinal)
+            .ToFrozenDictionary(StringComparer.Ordinal);
+
+    /// <summary>Public instance property by name (trim-safe: the map is built from a statically known type).</summary>
+    public static PropertyInfo? FindProperty(string propertyName) => PropertyMap.GetValueOrDefault(propertyName);
+
     public object? GetEffective(string propertyName)
     {
-        var prop = GetType().GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance)
-                   ?? throw new ArgumentException($"Unknown property {propertyName}");
+        var prop = FindProperty(propertyName) ?? throw new ArgumentException($"Unknown property {propertyName}");
         if (Inherits(propertyName) && Parent is not null)
             return Parent.GetEffective(propertyName);
         return prop.GetValue(this);

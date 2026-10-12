@@ -43,8 +43,9 @@ the same file format, running as a native arm64 app with sessions embedded in ta
 - **The mRemoteNG layout, refined**: connection tree with search, favourites and quick connect, a categorised
   property grid, session tabs and a notifications panel, in a restrained "Graphite + Indigo" design system
   with [Lucide](https://lucide.dev) icons and light and dark appearance (see [docs/design.md](docs/design.md)).
-- **Native and fast**: .NET 10 on Apple Silicon, zero-copy framebuffer path from FreeRDP into the GPU-backed
-  surface, no Rosetta, no Electron, no browser.
+- **Native and fast**: compiled ahead of time to a single arm64 executable (.NET 10 NativeAOT, no runtime, no JIT,
+  no IL in the bundle, about 53 MB on disk including FreeRDP and Skia), zero-copy framebuffer path from FreeRDP
+  into the GPU-backed surface, no Rosetta, no Electron, no browser.
 - **Honest security**: certificates are verified and prompted for exactly like FreeRDP's own clients (trust is
   stored in `~/Library/Application Support/mRemoteMac/freerdp`), credentials never leave the encrypted connection file, and nothing phones home.
 
@@ -97,8 +98,12 @@ dotnet build src/MRemoteMac     # or open mRemoteMac.sln in Rider / VS Code
 dotnet run --project src/MRemoteMac
 
 dotnet test tests/MRemoteMac.Tests      # file format and crypto tests
-./packaging/make-app.sh                 # dist/mRemoteMac.app + .zip + .dmg
+./packaging/make-app.sh                 # NativeAOT dist/mRemoteMac.app + .zip + .dmg (needs clang from Xcode CLT)
 ```
+
+The app is published with NativeAOT, so everything must stay trim- and AOT-clean: compiled XAML bindings
+(`x:DataType`), source-generated JSON, no `Enum.GetValues(Type)` or `GetType().GetProperty(...)`. Release builds
+run the trim/AOT analyzers with warnings as errors, so a violation fails the build rather than the user.
 
 Versioning uses [MinVer](https://github.com/adamralph/minver): tag `vX.Y.Z` and the build, the bundle and the
 release carry that version.

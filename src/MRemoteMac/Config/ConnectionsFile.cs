@@ -1,3 +1,4 @@
+using MRemoteMac.Services;
 using System.Globalization;
 using System.Reflection;
 using System.Text;
@@ -179,7 +180,7 @@ public static class ConnectionsFile
             else if (t.IsEnum)
             {
                 if (!Enum.TryParse(t, value, true, out converted))
-                    converted = Enum.GetValues(t).GetValue(0);
+                    converted = EnumHelper.Values(t).First();
                 // removed protocols (e.g. ICA) fall back to RDP
                 if (t == typeof(ProtocolType) && !Enum.IsDefined(t, converted!)) converted = ProtocolType.RDP;
             }

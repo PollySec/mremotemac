@@ -7,4 +7,9 @@
 - UI audit: debug builds accept `MRM_SCRIPT=<script> MRM_OUT=<dir> MRM_HOME=<settings dir>` (see `Services/UiTestRunner.cs`).
 - Code rules: .NET 10 best practices, no `async void` (use `AsyncHelper.Fire`), RDP-thread events are marshalled with `Dispatcher.UIThread.Post`,
   native interop via `LibraryImport`, analyzers at `latest-recommended` must stay warning-free.
+- The app ships as NativeAOT (`packaging/make-app.sh`). Keep everything trim/AOT-clean: XAML bindings need `x:DataType`
+  (compiled bindings are on by default), JSON via source generators, no `Enum.GetValues(Type)` / `GetType().GetProperty`,
+  reflection over `ConnectionInfo` only through `ConnectionInfo.FindProperty` / `GridProperties`. `IsAotCompatible` is on
+  in Release, so `dotnet build -c Release -warnaserror` must pass. Verify a published build with
+  `MRM_HOME=… MRM_CONNECT_NODE=… MRM_SCREENSHOT=… MRM_EXIT=1 dist/mRemoteMac.app/Contents/MacOS/mRemoteMac`.
 - Commit messages end with `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`.

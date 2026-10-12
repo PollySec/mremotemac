@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:c="using:MRemoteMac.Controls"
              x:Class="MRemoteMac.App"
+             Name="mRemoteMac"
              RequestedThemeVariant="Light">
     <!--
       Colour system "Graphite + Indigo": one cool-graphite neutral ramp (hue 255°) and a single indigo accent (hue 268°).

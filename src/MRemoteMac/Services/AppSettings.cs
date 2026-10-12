@@ -36,14 +36,13 @@ public sealed class AppSettings
     public int? WindowY { get; set; }
     public bool WindowMaximized { get; set; }
 
-    private static readonly JsonSerializerOptions Json = new() { WriteIndented = true, Converters = { new JsonStringEnumConverter() } };
 
     public static AppSettings Load()
     {
         try
         {
             if (File.Exists(SettingsPath))
-                return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(SettingsPath), Json) ?? new AppSettings();
+                return JsonSerializer.Deserialize(File.ReadAllText(SettingsPath), AppSettingsJsonContext.Default.AppSettings) ?? new AppSettings();
         }
         catch { /* corrupt settings: start fresh */ }
         return new AppSettings();
@@ -52,6 +51,11 @@ public sealed class AppSettings
     public void Save()
     {
         System.IO.Directory.CreateDirectory(Directory);
-        File.WriteAllText(SettingsPath, JsonSerializer.Serialize(this, Json));
+        File.WriteAllText(SettingsPath, JsonSerializer.Serialize(this, AppSettingsJsonContext.Default.AppSettings));
     }
 }
+
+/// <summary>Source-generated serializer: no reflection, works under trimming and NativeAOT.</summary>
+[JsonSourceGenerationOptions(WriteIndented = true, UseStringEnumConverter = true)]
+[JsonSerializable(typeof(AppSettings))]
+internal sealed partial class AppSettingsJsonContext : JsonSerializerContext;

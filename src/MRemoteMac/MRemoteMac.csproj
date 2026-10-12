@@ -8,7 +8,9 @@
     <RuntimeIdentifier>osx-arm64</RuntimeIdentifier>
     <SelfContained>false</SelfContained>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <!-- trim/AOT analyzers (the debug-only UI test runner reflects into Avalonia internals, so Release only) -->
+    <IsAotCompatible Condition="'$(Configuration)' == 'Release'">true</IsAotCompatible>
     <AssemblyName>mRemoteMac</AssemblyName>
     <RootNamespace>MRemoteMac</RootNamespace>
     <LangVersion>latest</LangVersion>
