@@ -274,7 +274,8 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
 
         // files take precedence: Finder puts both file URLs and a text form on the pasteboard
         var files = await clip.TryGetFilesAsync().ConfigureAwait(true);
-        var paths = files?.Select(f => f.TryGetLocalPath()).Where(p => !string.IsNullOrEmpty(p)).Cast<string>().ToList();
+        // APFS keeps names as typed (often NFD); Windows expects composed characters, and APFS lookups are normalisation-insensitive
+        var paths = files?.Select(f => f.TryGetLocalPath()).Where(p => !string.IsNullOrEmpty(p)).Select(p => p!.Normalize(System.Text.NormalizationForm.FormC)).ToList();
         if (paths is { Count: > 0 })
         {
             var key = "files:" + string.Join('\n', paths);

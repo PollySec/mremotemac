@@ -31,6 +31,7 @@
 #include <winpr/clipboard.h>
 #include <winpr/shell.h>
 #include <sys/stat.h>
+#include <fcntl.h>
 #include <errno.h>
 #include <winpr/clipboard.h>
 #include <mach/mach_time.h>
@@ -283,7 +284,7 @@ static void mr_logf(mr_session* s, const char* fmt, ...)
 
 /* ---------- clipboard: text and files (MS-RDPECLIP) ---------- */
 
-#define MR_CLIP_CHUNK (512u * 1024u)   /* bytes per File Contents Request when downloading */
+#define MR_CLIP_CHUNK (1024u * 1024u)  /* bytes per File Contents Request when downloading (FreeRDP caps at 8 MiB) */
 #define MR_CLIP_PROGRESS_STEP (1u << 20)
 
 static const char type_FileGroupDescriptorW[] = "FileGroupDescriptorW";
@@ -349,6 +350,9 @@ static UINT mr_cliprdr_monitor_ready(CliprdrClientContext* ctx, const CLIPRDR_MO
 	gen.version = CB_CAPS_VERSION_2;
 	/* file flags are only offered when the server announced stream file clip support (caps come before ready) */
 	gen.generalFlags = CB_USE_LONG_FORMAT_NAMES | cliprdr_file_context_current_flags(s->clip_file);
+	/* lock support is negotiated as (server & client): announce it so our downloads may lock the remote selection */
+	if (s->remote_caps_flags & CB_CAN_LOCK_CLIPDATA)
+		gen.generalFlags |= CB_CAN_LOCK_CLIPDATA;
 	UINT rc = ctx->ClientCapabilities(ctx, &caps);
 	mr_logf(s, "Clipboard: channel ready, capabilities sent (files %s, rc=%u)",
 	        (gen.generalFlags & CB_STREAM_FILECLIP_ENABLED) ? "on" : "off", (unsigned)rc);
@@ -533,10 +537,7 @@ static void dl_next_file(mr_session* s)
 			s->dl.size = ((UINT64)fd->nFileSizeHigh << 32) | fd->nFileSizeLow;
 			if (s->dl.size == 0)
 			{
-				fclose(s->dl.fp);
-				s->dl.fp = NULL;
-				free(s->dl.cur_path);
-				s->dl.cur_path = NULL;
+				dl_close_current(s);
 				s->dl.index++;
 				continue;
 			}
@@ -547,6 +548,32 @@ static void dl_next_file(mr_session* s)
 		return;
 	}
 	dl_finish(s, NULL);
+}
+
+static void dl_close_current(mr_session* s)
+{
+	if (s->dl.fp)
+	{
+		fclose(s->dl.fp);
+		s->dl.fp = NULL;
+	}
+	const FILEDESCRIPTORW* fd = s->dl.index < s->remote_file_count ? &s->remote_files[s->dl.index] : NULL;
+	if (fd && s->dl.cur_path && (fd->dwFlags & FD_WRITESTIME))
+	{
+		/* FILETIME: 100 ns ticks since 1601-01-01 -> Unix seconds */
+		const UINT64 ft = ((UINT64)fd->ftLastWriteTime.dwHighDateTime << 32) | fd->ftLastWriteTime.dwLowDateTime;
+		if (ft > 116444736000000000ULL)
+		{
+			const UINT64 unix_ns100 = ft - 116444736000000000ULL;
+			struct timespec ts[2];
+			ts[0].tv_sec = (time_t)(unix_ns100 / 10000000ULL);
+			ts[0].tv_nsec = (long)((unix_ns100 % 10000000ULL) * 100);
+			ts[1] = ts[0];
+			(void)utimensat(AT_FDCWD, s->dl.cur_path, ts, 0);
+		}
+	}
+	free(s->dl.cur_path);
+	s->dl.cur_path = NULL;
 }
 
 static UINT mr_cliprdr_server_file_contents_response(CliprdrClientContext* ctx,
@@ -573,10 +600,7 @@ static UINT mr_cliprdr_server_file_contents_response(CliprdrClientContext* ctx,
 		s->dl.total += size;
 		if (size == 0)
 		{
-			fclose(s->dl.fp);
-			s->dl.fp = NULL;
-			free(s->dl.cur_path);
-			s->dl.cur_path = NULL;
+			dl_close_current(s);
 			s->dl.index++;
 			dl_next_file(s);
 			return CHANNEL_RC_OK;
@@ -600,10 +624,7 @@ static UINT mr_cliprdr_server_file_contents_response(CliprdrClientContext* ctx,
 	}
 	if (n == 0 || s->dl.offset >= s->dl.size)
 	{
-		fclose(s->dl.fp);
-		s->dl.fp = NULL;
-		free(s->dl.cur_path);
-		s->dl.cur_path = NULL;
+		dl_close_current(s);
 		s->dl.index++;
 		dl_next_file(s);
 		return CHANNEL_RC_OK;
@@ -747,8 +768,14 @@ static UINT mr_cliprdr_server_format_data_request(CliprdrClientContext* ctx,
 			if (arr)
 			{
 				const UINT32 count = dsize / sizeof(FILEDESCRIPTORW);
-				if (cliprdr_serialize_file_list_ex(cliprdr_file_context_remote_get_flags(s->clip_file), arr, count, &data, &len) != 0)
+				const UINT serr = cliprdr_serialize_file_list_ex(cliprdr_file_context_remote_get_flags(s->clip_file), arr, count, &data, &len);
+				if (serr != 0)
+				{
 					data = NULL;
+					mr_logf(s, serr == ERROR_FILE_TOO_LARGE
+					               ? "Clipboard: a file is 2 GiB or larger and the session did not negotiate huge file support"
+					               : "Clipboard: could not build the file list (error %u)", (unsigned)serr);
+				}
 				free(arr);
 			}
 		}
@@ -876,9 +903,12 @@ int32_t mr_set_clipboard_text(mr_session* s, const char* utf8)
 	pthread_mutex_lock(&s->clip_lock);
 	free(s->clip_local_text);
 	s->clip_local_text = utf8 ? _strdup(utf8) : NULL;
+	int had_files = s->clip_local_files != NULL;
 	free(s->clip_local_files);
 	s->clip_local_files = NULL;
 	pthread_mutex_unlock(&s->clip_lock);
+	if (had_files)
+		(void)cliprdr_file_context_clear(s->clip_file);
 	return clip_announce(s);
 }
 
