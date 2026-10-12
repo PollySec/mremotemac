@@ -12,6 +12,9 @@ and versions follow [Semantic Versioning](https://semver.org) via git tags (MinV
 - The macOS application menu is titled "mRemoteMac" instead of Avalonia's default.
 
 ### Added
+- Clipboard: text copied on the Mac is pushed to the session automatically (NSPasteboard change polling while
+  connected, not only when the session view gains focus), and new / quick-connect connections have clipboard
+  redirection on by default. Text copied in the session already landed on the Mac clipboard.
 - Analogue TV static behind the "Connecting…" overlay while a session is being established (Options ▸ Appearance
   to turn it off). Rendered into a small bitmap at 25 fps only while visible, so idle tabs cost nothing. The overlay
   stays up until the server has drawn its first frame, so there is no black panel between handshake and desktop.

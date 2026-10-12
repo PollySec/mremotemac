@@ -81,6 +81,7 @@ size of the tab (dynamic resolution), **SmartSize** scales a fixed desktop to fi
 |---|---|
 | mRemoteNG file format | ✅ ConfVersion 2.6–2.9 read/write, master password, full-file encryption, legacy import (verified against mRemoteNG's own test vectors) |
 | RDP core, TLS, NLA/CredSSP, certificate prompts, dynamic resolution, cursors, clipboard text | ✅ verified end-to-end against FreeRDP's test server |
+| Clipboard: text both ways (Mac ⇄ session), on by default for new connections | ✅ `Redirect ▸ Clipboard` per connection; files and images are not transferred |
 | Windows Server / Windows 11 hosts, RD Gateway, audio, drive/printer redirection | ⚠️ implemented through FreeRDP; please report what you see |
 | Protocols other than RDP (SSH, VNC, HTTP, …) | ❌ by design; entries are kept in the file untouched, shown dimmed and cannot be opened |
 | Intel Macs | ❌ arm64 only |

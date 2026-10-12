@@ -88,7 +88,7 @@ public sealed partial class MainViewModel : ObservableObject
     public ConnectionInfo AddConnection(ConnectionInfo? at)
     {
         var parent = TargetContainerFor(at);
-        var c = new ConnectionInfo();
+        var c = new ConnectionInfo { RedirectClipboard = true }; // what people expect from a desktop RDP client
         if (parent is not RootNodeInfo) foreach (var p in parent.Inheritance) c.Inheritance.Add(p);
         var index = at is not null && !at.IsContainer && at.Parent == parent ? parent.Children.IndexOf(at) + 1 : -1;
         parent.AddChild(c, index);
@@ -188,7 +188,7 @@ public sealed partial class MainViewModel : ObservableObject
     public ConnectionInfo QuickConnect(string input)
     {
         var text = input.Trim();
-        var c = new ConnectionInfo { IsQuickConnect = true, Protocol = ProtocolType.RDP, RdpVersion = RdpVersion.Highest };
+        var c = new ConnectionInfo { IsQuickConnect = true, Protocol = ProtocolType.RDP, RdpVersion = RdpVersion.Highest, RedirectClipboard = true };
         var at = text.LastIndexOf('@');
         if (at > 0) { c.Username = text[..at]; text = text[(at + 1)..]; }
         var colon = text.LastIndexOf(':');

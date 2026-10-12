@@ -31,6 +31,8 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
     private readonly Controls.StaticNoiseView _noise = new() { IsVisible = false };
     private readonly Button _reconnectButton;
     private string? _lastLocalClipboard;
+    private long _lastPasteboardChange = -1;
+    private readonly DispatcherTimer _clipboardTimer;
     private int _generation; // guards late events from a replaced session
 
     [ObservableProperty] private string _title;
@@ -75,6 +77,9 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
         };
         Content = new Panel { Children = { View, _noise, _overlay } };
         View.GotFocus += (_, _) => AsyncHelper.Fire(PushLocalClipboardAsync, "Clipboard");
+        // macOS has no clipboard-change notification: poll NSPasteboard.changeCount (an integer read) while connected
+        // and push new local text to the session, so copy on the Mac then paste in the session just works.
+        _clipboardTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(500), DispatcherPriority.Background, (_, _) => PollLocalClipboard());
         View.FirstFrame += () => { if (State == TabState.Connected) SetState(TabState.Connected, ""); }; // lifts the overlay
     }
 
@@ -141,11 +146,14 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
             SetState(TabState.Connected, "");
             Info.OpenConnections++;
             View.Focus();
+            _lastPasteboardChange = Native.mr_pasteboard_change_count();
+            if (Info.GetEffective<bool>(nameof(ConnectionInfo.RedirectClipboard))) _clipboardTimer.Start();
             Notifications.Instance.Info($"Connected to {Info.Name} ({Info.GetEffective<string>(nameof(ConnectionInfo.Hostname))})");
         });
         session.Disconnected += (err, text) => Dispatcher.UIThread.Post(() =>
         {
             if (generation != _generation) return;
+            _clipboardTimer.Stop();
             if (State == TabState.Connected && Info.OpenConnections > 0) Info.OpenConnections--;
             if (RdpSession.IsCleanDisconnect(err, session.LastErrorName))
             {
@@ -199,6 +207,15 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
         if (clip is null) return;
         _lastLocalClipboard = text;
         await clip.SetTextAsync(text).ConfigureAwait(true);
+        _lastPasteboardChange = Native.mr_pasteboard_change_count(); // our own write must not be pushed back
+    }
+
+    private void PollLocalClipboard()
+    {
+        var count = Native.mr_pasteboard_change_count();
+        if (count == _lastPasteboardChange) return;
+        _lastPasteboardChange = count;
+        AsyncHelper.Fire(PushLocalClipboardAsync, "Clipboard");
     }
 
     private async Task PushLocalClipboardAsync()
@@ -224,6 +241,7 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
     {
         var s = Session;
         if (s is null) return;
+        _clipboardTimer.Stop();
         _generation++;
         Session = null;
         View.Session = null;

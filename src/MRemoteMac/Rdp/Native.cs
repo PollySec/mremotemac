@@ -46,6 +46,8 @@ internal static unsafe partial class Native
     [LibraryImport(Lib)] public static partial void mr_send_focus_in(IntPtr s, ushort toggleFlags);
     [LibraryImport(Lib)] public static partial int mr_resize_desktop(IntPtr s, uint width, uint height);
     [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)] public static partial int mr_set_clipboard_text(IntPtr s, string? utf8);
+    /// <summary>NSPasteboard.generalPasteboard.changeCount, or -1 when unavailable; cheap enough to poll.</summary>
+    [LibraryImport(Lib)] public static partial long mr_pasteboard_change_count();
 
     /// <summary>Windows keyboard layout id of the current macOS input source (0 if unknown).</summary>
     public static uint DetectKeyboardLayout()
