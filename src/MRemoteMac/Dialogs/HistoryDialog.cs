@@ -16,12 +16,12 @@ public static class HistoryDialog
         var revisions = store.History();
         long? chosen = null;
 
-        var list = new ListBox { Height = 320, Width = 560, ItemsSource = revisions };
+        var list = new ListBox { Height = 320, Width = 620, ItemsSource = revisions };
         list.Classes.Add("history");
         list.ItemTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<RevisionInfo>((r, _) =>
         {
             var when = new TextBlock { Text = r.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.CurrentCulture), Width = 150, VerticalAlignment = VerticalAlignment.Center };
-            var counts = new TextBlock { Text = $"{r.Connections} conn · {r.Folders} fold", Width = 110, VerticalAlignment = VerticalAlignment.Center };
+            var counts = new TextBlock { Text = $"{r.Connections} connections · {r.Folders} folders", Width = 170, TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
             counts.Classes.Add("caption");
             var summary = new TextBlock { Text = r.Summary, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
             ToolTip.SetTip(summary, r.Summary);
@@ -32,7 +32,7 @@ public static class HistoryDialog
         var hint = new TextBlock
         {
             Text = revisions.Count == 0 ? "No revisions yet." : "Every save keeps a snapshot. Restoring replaces the current tree with the selected revision (the restore itself is recorded, so nothing is lost).",
-            TextWrapping = TextWrapping.Wrap, MaxWidth = 560, Margin = new Thickness(0, 8, 0, 0),
+            TextWrapping = TextWrapping.Wrap, MaxWidth = 620, Margin = new Thickness(0, 8, 0, 0),
         };
         hint.Classes.Add("caption");
 

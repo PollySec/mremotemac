@@ -233,6 +233,7 @@ public sealed partial class MainWindow : Window
             try
             {
                 var r = ConnectionsFile.Load(path, password);
+                var count = r.Root.Descendants().Count(n => !n.IsContainer); // before the nodes move
                 ContainerInfo target;
                 if (asFolder)
                 {
@@ -243,7 +244,7 @@ public sealed partial class MainWindow : Window
                 foreach (var child in r.Root.Children.ToList()) target.AddChild(child);
                 _vm.MarkDirty();
                 if (asFolder) SelectNode(target);
-                return r.Root.Descendants().Count(n => !n.IsContainer);
+                return count;
             }
             catch (ConnectionsFile.PasswordRequiredException)
             {
