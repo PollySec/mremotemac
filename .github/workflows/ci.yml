@@ -37,7 +37,7 @@ jobs:
         run: ./native/build.sh
 
       - name: Restore
-        run: dotnet restore mRemoteMac.slnx
+        run: dotnet restore mRemoteMac.slnx -p:Configuration=Release
 
       - name: Build (warnings are errors)
         run: dotnet build mRemoteMac.slnx -c Release --no-restore -warnaserror
