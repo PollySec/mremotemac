@@ -69,7 +69,7 @@ public sealed unsafe class RdpSession : IDisposable
     public event Action<RemotePointer?>? PointerChanged;   // RDP thread; null = default cursor
     public event Action? PointerHidden;                    // RDP thread
     public event Action<string>? ClipboardTextReceived;    // RDP thread
-    public event Action<string>? Diagnostic;               // RDP/channel thread: clipboard channel events
+    public event Action<int, string>? Diagnostic;          // RDP/channel thread: level 0 = trace (log file), 1 = event (panel)
     /// <summary>The session offered files: (entries, folders, total bytes, first names). Channel thread.</summary>
     public event Action<int, int, ulong, string>? ClipboardFilesOffered;
     /// <summary>Download progress: (bytes done, bytes total, current file name). Channel thread.</summary>
@@ -104,7 +104,7 @@ public sealed unsafe class RdpSession : IDisposable
             on_pointer_hidden = (IntPtr)(delegate* unmanaged[Cdecl]<IntPtr, void>)&OnPointerHidden,
             on_clipboard_text = (IntPtr)(delegate* unmanaged[Cdecl]<IntPtr, IntPtr, void>)&OnClipboardText,
             on_reconnecting = (IntPtr)(delegate* unmanaged[Cdecl]<IntPtr, void>)&OnReconnecting,
-            on_log = (IntPtr)(delegate* unmanaged[Cdecl]<IntPtr, IntPtr, void>)&OnLog,
+            on_log = (IntPtr)(delegate* unmanaged[Cdecl]<IntPtr, int, IntPtr, void>)&OnLog,
             on_clipboard_files = (IntPtr)(delegate* unmanaged[Cdecl]<IntPtr, int, int, ulong, IntPtr, void>)&OnClipboardFiles,
             on_clipboard_progress = (IntPtr)(delegate* unmanaged[Cdecl]<IntPtr, ulong, ulong, IntPtr, void>)&OnClipboardProgress,
             on_clipboard_files_done = (IntPtr)(delegate* unmanaged[Cdecl]<IntPtr, IntPtr, int, IntPtr, void>)&OnClipboardFilesDone,
@@ -365,7 +365,7 @@ public sealed unsafe class RdpSession : IDisposable
     private static void OnClipboardText(IntPtr user, IntPtr utf8) => From(user)?.ClipboardTextReceived?.Invoke(Str(utf8));
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
-    private static void OnLog(IntPtr user, IntPtr utf8) => From(user)?.Diagnostic?.Invoke(Str(utf8));
+    private static void OnLog(IntPtr user, int level, IntPtr utf8) => From(user)?.Diagnostic?.Invoke(level, Str(utf8));
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void OnClipboardFiles(IntPtr user, int count, int folders, ulong total, IntPtr preview)

@@ -184,7 +184,11 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
             Notifications.Instance.Warn($"{Info.Name}: connection lost, reconnecting.");
         });
         session.ClipboardTextReceived += text => Dispatcher.UIThread.Post(() => AsyncHelper.Fire(() => SetLocalClipboardAsync(text), "Clipboard"));
-        session.Diagnostic += text => Dispatcher.UIThread.Post(() => Notifications.Instance.Info($"{Info.Name}: {text}"));
+        session.Diagnostic += (level, text) =>
+        {
+            if (level == 0) AppLog.Trace($"{Info.Name}: {text}");
+            else Dispatcher.UIThread.Post(() => Notifications.Instance.Info($"{Info.Name}: {text}"));
+        };
         session.ClipboardFilesOffered += (count, folders, total, preview) => Dispatcher.UIThread.Post(() => { if (generation == _generation) OnClipboardFilesOffered(count, folders, total, preview); });
         session.ClipboardFileProgress += (done, total, name) => Dispatcher.UIThread.Post(() => OnClipboardFileProgress(done, total, name));
         session.ClipboardFilesDone += (dest, files, error) => Dispatcher.UIThread.Post(() => AsyncHelper.Fire(() => OnClipboardFilesDoneAsync(dest, files, error), "Clipboard files"));
@@ -263,12 +267,17 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
         var count = Native.mr_pasteboard_change_count();
         if (count == _lastPasteboardChange) return;
         _lastPasteboardChange = count;
+        AppLog.Trace($"{Info.Name}: pasteboard changed (change count {count})");
         AsyncHelper.Fire(PushLocalClipboardAsync, "Clipboard");
     }
 
     private async Task PushLocalClipboardAsync()
     {
-        if (Session is not { IsConnected: true } || !Info.GetEffective<bool>(nameof(ConnectionInfo.RedirectClipboard))) return;
+        if (Session is not { IsConnected: true } || !Info.GetEffective<bool>(nameof(ConnectionInfo.RedirectClipboard)))
+        {
+            AppLog.Trace($"{Info.Name}: Mac clipboard not pushed ({(Session is { IsConnected: true } ? "clipboard redirection is off" : "not connected")})");
+            return;
+        }
         var clip = TopLevel.GetTopLevel(View)?.Clipboard;
         if (clip is null) return;
 
@@ -276,11 +285,15 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
         var files = await clip.TryGetFilesAsync().ConfigureAwait(true);
         // APFS keeps names as typed (often NFD); Windows expects composed characters, and APFS lookups are normalisation-insensitive
         var paths = files?.Select(f => f.TryGetLocalPath()).Where(p => !string.IsNullOrEmpty(p)).Select(p => p!.Normalize(System.Text.NormalizationForm.FormC)).ToList();
+        var itemCount = files?.Length ?? 0;
+        AppLog.Trace($"{Info.Name}: Mac clipboard holds {itemCount} file item(s), {paths?.Count ?? 0} with a local path{(paths is { Count: > 0 } ? ": " + string.Join(" | ", paths) : "")}");
         if (paths is { Count: > 0 })
         {
             var key = "files:" + string.Join('\n', paths);
-            if (key == _lastLocalClipboard) return;
+            if (key == _lastLocalClipboard) { AppLog.Trace($"{Info.Name}: same files as last time, not announced again"); return; }
             _lastLocalClipboard = key;
+            foreach (var p in paths.Where(p => !File.Exists(p) && !Directory.Exists(p)))
+                Notifications.Instance.Warn($"{Info.Name}: Clipboard: {p} does not exist or is not readable");
             var sentFiles = Session.SetClipboardFiles(paths);
             Notifications.Instance.Info($"{Info.Name}: Clipboard: {paths.Count} file(s) from the Mac {(sentFiles ? "announced to the session; paste there to copy them" : "kept until the channel is ready")}");
             return;
@@ -288,7 +301,7 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
 
         var text = await clip.TryGetTextAsync().ConfigureAwait(true);
         if (string.IsNullOrEmpty(text)) { Notifications.Instance.Info($"{Info.Name}: Clipboard: Mac clipboard has no text or files"); return; }
-        if (text == _lastLocalClipboard) return;
+        if (text == _lastLocalClipboard) { AppLog.Trace($"{Info.Name}: same text as last time, not announced again"); return; }
         _lastLocalClipboard = text;
         var sent = Session.SetClipboardText(text);
         Notifications.Instance.Info($"{Info.Name}: Clipboard: {text.Length} characters from the Mac {(sent ? "announced to the session" : "kept until the channel is ready")}");
@@ -321,7 +334,9 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
         if (Session is null) return;
         var dest = Path.Combine(AppSettings.ClipboardCacheDirectory, Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture), $"{Info.ConstantId[..8]}-{++_fetchCounter}");
         if (Session.FetchClipboardFiles(dest))
-            Notifications.Instance.Info($"{Info.Name}: Clipboard: fetching {what}");
+            Notifications.Instance.Info($"{Info.Name}: Clipboard: fetching {what} into {dest}");
+        else
+            Notifications.Instance.Warn($"{Info.Name}: Clipboard: could not start fetching {what} (a transfer is already running or the session offered nothing)");
     }
 
     private void OnClipboardFileProgress(ulong done, ulong total, string name)
@@ -338,7 +353,8 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
             return;
         }
         var top = TopLevel.GetTopLevel(View);
-        if (top is null || !Directory.Exists(dest)) return;
+        AppLog.Trace($"{Info.Name}: transfer finished, {files} file(s) in {dest} (folder exists: {Directory.Exists(dest)}, window: {top is not null})");
+        if (top is null || !Directory.Exists(dest)) { Notifications.Instance.Warn($"{Info.Name}: Clipboard: received files, but {dest} is missing"); return; }
         var transfer = new DataTransfer();
         var names = new List<string>();
         foreach (var entry in Directory.EnumerateFileSystemEntries(dest).OrderBy(e => e, StringComparer.Ordinal))
@@ -346,14 +362,25 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
             IStorageItem? item = Directory.Exists(entry)
                 ? await top.StorageProvider.TryGetFolderFromPathAsync(new Uri(entry)).ConfigureAwait(true)
                 : await top.StorageProvider.TryGetFileFromPathAsync(new Uri(entry)).ConfigureAwait(true);
+            AppLog.Trace($"{Info.Name}: clipboard item {entry} -> {(item is null ? "could not be opened" : item.Path.ToString())}");
             if (item is null) continue;
             transfer.Add(DataTransferItem.CreateFile(item));
             names.Add(Path.GetFileName(entry));
         }
         if (names.Count == 0) { Notifications.Instance.Warn($"{Info.Name}: Clipboard: nothing was received"); return; }
-        await top.Clipboard!.SetDataAsync(transfer).ConfigureAwait(true);
+        try
+        {
+            await top.Clipboard!.SetDataAsync(transfer).ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            CrashLog.Write("Clipboard files", ex);
+            Notifications.Instance.Error($"{Info.Name}: Clipboard: the files were received into {dest} but could not be put on the Mac clipboard: {ex.Message}");
+            return;
+        }
         _lastLocalClipboard = "files:" + string.Join('\n', Directory.EnumerateFileSystemEntries(dest).OrderBy(e => e, StringComparer.Ordinal));
         _lastPasteboardChange = Native.mr_pasteboard_change_count(); // our own write must not be pushed back
+        AppLog.Trace($"{Info.Name}: Mac clipboard now holds the received files (change count {_lastPasteboardChange})");
         Notifications.Instance.Info($"{Info.Name}: Clipboard: {files} file(s) from the session are on the Mac clipboard ({string.Join(", ", names.Take(3))}{(names.Count > 3 ? ", …" : "")}); paste in Finder to copy them");
     }
 

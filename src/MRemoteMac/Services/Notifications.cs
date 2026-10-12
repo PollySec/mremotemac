@@ -34,6 +34,12 @@ public sealed class Notifications
             var m = new NotificationMessage(cls, text, DateTime.Now);
             Messages.Add(m);
             if (EchoToConsole) Console.Error.WriteLine($"[{cls}] {text}");
+            switch (cls)
+            {
+                case MessageClass.Error: AppLog.Error(text); break;
+                case MessageClass.Warning: AppLog.Warn(text); break;
+                default: AppLog.Info(text); break;
+            }
             while (Messages.Count > 500) Messages.RemoveAt(0);
             MessageAdded?.Invoke(m);
         }

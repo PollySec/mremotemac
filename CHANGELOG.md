@@ -13,6 +13,12 @@ and versions follow [Semantic Versioning](https://semver.org) via git tags (MinV
   Finder to copy them. Progress and the result show in the notifications panel. Remote clipboard data is locked
   during a transfer when the server supports it.
 - Clipboard diagnostics in the notifications panel (channel ready, offered formats, requests, transfers).
+- **Log file.** Everything in the notifications panel, plus FreeRDP's clipboard trace, is written to
+  `~/Library/Logs/mRemoteMac/mRemoteMac.log` (Help ▸ Show Log Folder; rotated at 5 MB).
+
+### Fixed
+- Pasting Mac files in a Windows session failed with "Unspecified error": the file list is now handed to FreeRDP
+  per clipboard lock, which Windows takes freshly before every paste.
 
 ## [1.1.1] – 2026-10-12
 

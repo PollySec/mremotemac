@@ -16,8 +16,8 @@ typedef struct mr_session mr_session;
 
 /* Dirty rectangle in the framebuffer has been updated. */
 typedef void (*mr_on_frame)(void* user, int32_t x, int32_t y, int32_t w, int32_t h);
-/* diagnostic text (clipboard channel events), UTF-8, valid only during the call */
-typedef void (*mr_on_log)(void* user, const char* message);
+/* diagnostic text, UTF-8, valid only during the call; level 0 = trace (log file only), 1 = event worth showing */
+typedef void (*mr_on_log)(void* user, int32_t level, const char* message);
 /* the session offered files: count of entries, how many are folders, total bytes of the files, first names */
 typedef void (*mr_on_clipboard_files)(void* user, int32_t count, int32_t folders, uint64_t total_bytes, const char* preview);
 typedef void (*mr_on_clipboard_progress)(void* user, uint64_t done, uint64_t total, const char* current_name);

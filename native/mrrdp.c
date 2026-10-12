@@ -273,16 +273,31 @@ static BOOL mr_pointer_set_position(rdpContext* context, UINT32 x, UINT32 y)
 
 /* ---------- diagnostics ---------- */
 
-static void mr_logf(mr_session* s, const char* fmt, ...)
+static void mr_vlogf(mr_session* s, int32_t level, const char* fmt, va_list ap)
 {
 	if (!s || !s->cb.on_log)
 		return;
-	char buf[512];
+	char buf[1024];
+	vsnprintf(buf, sizeof(buf), fmt, ap);
+	s->cb.on_log(s->cb.user, level, buf);
+}
+
+/* an event the user may want to see (Notifications panel + log file) */
+static void mr_logf(mr_session* s, const char* fmt, ...)
+{
 	va_list ap;
 	va_start(ap, fmt);
-	vsnprintf(buf, sizeof(buf), fmt, ap);
+	mr_vlogf(s, 1, fmt, ap);
 	va_end(ap);
-	s->cb.on_log(s->cb.user, buf);
+}
+
+/* detail for the log file only */
+static void mr_tracef(mr_session* s, const char* fmt, ...)
+{
+	va_list ap;
+	va_start(ap, fmt);
+	mr_vlogf(s, 0, fmt, ap);
+	va_end(ap);
 }
 
 /* FreeRDP's own clipboard warnings ("missing entry for lockID …", "failed to open file …") name the exact step that
@@ -296,10 +311,16 @@ static BOOL mr_wlog_message(const wLogMessage* msg)
 {
 	if (!msg || !msg->TextString)
 		return TRUE;
+	const int warn = msg->Level >= WLOG_WARN;
 	pthread_mutex_lock(&g_sessions_lock);
 	for (int i = 0; i < MR_MAX_SESSIONS; i++)
 		if (g_sessions[i])
-			mr_logf(g_sessions[i], "FreeRDP: %s", msg->TextString);
+		{
+			if (warn)
+				mr_logf(g_sessions[i], "FreeRDP: %s", msg->TextString);
+			else
+				mr_tracef(g_sessions[i], "FreeRDP %s: %s", msg->FunctionName ? msg->FunctionName : "", msg->TextString);
+		}
 	pthread_mutex_unlock(&g_sessions_lock);
 	return TRUE;
 }
@@ -328,8 +349,7 @@ static void mr_register_session(mr_session* s)
 			cb.message = mr_wlog_message;
 			if (a)
 				(void)WLog_ConfigureAppender(a, "callbacks", &cb);
-			if (WLog_GetLogLevel(l) > WLOG_WARN)
-				(void)WLog_SetLogLevel(l, WLOG_WARN);
+			(void)WLog_SetLogLevel(l, WLOG_DEBUG); /* debug lines go to the log file only, warnings also to the panel */
 		}
 	}
 	pthread_mutex_unlock(&g_sessions_lock);
@@ -826,6 +846,8 @@ static void clip_attach_local_files(mr_session* s)
 	(void)cliprdr_file_context_clear(s->clip_file);
 	if (!cliprdr_file_context_update_client_data(s->clip_file, uris, strlen(uris)))
 		mr_logf(s, "Clipboard: could not attach the local file list for the session");
+	else
+		mr_tracef(s, "attached local file list: %s", uris);
 	free(uris);
 }
 
@@ -849,6 +871,11 @@ static UINT mr_cliprdr_server_file_contents_request(CliprdrClientContext* ctx,
 	else if (pos == 0)
 		mr_logf(s, "Clipboard: session starts reading file #%u (%u bytes per request)", (unsigned)req->listIndex,
 		        (unsigned)req->cbRequested);
+	else if ((pos / (8u << 20)) != ((pos - req->cbRequested) / (8u << 20)))
+		mr_logf(s, "Clipboard: session has read %llu MB of file #%u", (unsigned long long)(pos >> 20), (unsigned)req->listIndex);
+	mr_tracef(s, "file contents request: stream %u, file #%u, flags 0x%x, offset %llu, %u bytes, clip id %s%u",
+	          (unsigned)req->streamId, (unsigned)req->listIndex, (unsigned)req->dwFlags, (unsigned long long)pos,
+	          (unsigned)req->cbRequested, req->haveClipDataId ? "" : "(none) ", (unsigned)req->clipDataId);
 	return s->file_contents_request ? s->file_contents_request(ctx, req) : CHANNEL_RC_OK;
 }
 

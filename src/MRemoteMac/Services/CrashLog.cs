@@ -19,6 +19,7 @@ public static class CrashLog
             Directory.CreateDirectory(System.IO.Path.GetDirectoryName(Path)!);
             File.AppendAllText(Path, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {where}: {ex}\n\n");
             Console.Error.WriteLine($"[crash] {where}: {ex}");
+            AppLog.Error($"{where}: {ex}");
         }
         catch { /* nothing more we can do */ }
     }
