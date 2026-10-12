@@ -113,7 +113,9 @@ MRRDP_API int32_t mr_resize_desktop(mr_session* s, uint32_t width, uint32_t heig
 MRRDP_API int32_t mr_set_clipboard_text(mr_session* s, const char* utf8);
 /* announces local files (absolute paths, newline separated) to the session; replaces any announced text */
 MRRDP_API int32_t mr_set_clipboard_files(mr_session* s, const char* paths_newline_separated);
-/* downloads the files the session last offered into dest_dir (created); progress via callbacks. 1 = started */
+/* downloads the files the session last offered into dest_dir (created); progress via callbacks. 0 = not started,
+ * 1 = started, 2 = started and file promises for the items are on the Mac pasteboard (a paste waits for the data).
+ * Call on the main thread (the pasteboard is written here). */
 MRRDP_API int32_t mr_clipboard_fetch_files(mr_session* s, const char* dest_dir);
 
 #ifdef __cplusplus

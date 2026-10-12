@@ -197,9 +197,15 @@ public sealed unsafe class RdpSession : IDisposable
     public bool SetClipboardFiles(IEnumerable<string> paths)
         => _handle != IntPtr.Zero && Native.mr_set_clipboard_files(_handle, string.Join('\n', paths)) != 0;
 
-    /// <summary>Starts downloading the files the session offered into <paramref name="destDir"/>.</summary>
-    public bool FetchClipboardFiles(string destDir)
-        => _handle != IntPtr.Zero && Native.mr_clipboard_fetch_files(_handle, destDir) != 0;
+    public enum FetchStart { NotStarted, Started, StartedWithPromises }
+
+    /// <summary>
+    /// Starts downloading the files the session offered into <paramref name="destDir"/>. UI thread: with
+    /// <see cref="FetchStart.StartedWithPromises"/> the Mac pasteboard now holds file promises, so a paste in Finder
+    /// completes by itself when the data has arrived.
+    /// </summary>
+    public FetchStart FetchClipboardFiles(string destDir)
+        => _handle == IntPtr.Zero ? FetchStart.NotStarted : (FetchStart)Math.Clamp(Native.mr_clipboard_fetch_files(_handle, destDir), 0, 2);
 
     /// <summary>Presses all scancodes in order and releases them in reverse.</summary>
     public void SendKeyCombination(params ReadOnlySpan<uint> scancodes)

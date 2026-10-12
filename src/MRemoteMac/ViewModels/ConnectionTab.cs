@@ -310,6 +310,7 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
     // ----- files from the session -----
 
     private int _fetchCounter;
+    private bool _fetchPromised; // the running fetch put file promises on the pasteboard (Finder greys out Paste until the real URLs replace them)
 
     private void OnClipboardFilesOffered(int count, int folders, ulong totalBytes, string preview)
     {
@@ -333,7 +334,15 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
     {
         if (Session is null) return;
         var dest = Path.Combine(AppSettings.ClipboardCacheDirectory, Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture), $"{Info.ConstantId[..8]}-{++_fetchCounter}");
-        if (Session.FetchClipboardFiles(dest))
+        var started = Session.FetchClipboardFiles(dest);
+        _fetchPromised = started == RdpSession.FetchStart.StartedWithPromises;
+        if (_fetchPromised)
+        {
+            _lastPasteboardChange = Native.mr_pasteboard_change_count(); // our own promises must not be pushed back
+            _lastLocalClipboard = "promise:" + dest;
+            Notifications.Instance.Info($"{Info.Name}: Clipboard: fetching {what}; paste in Finder once the files are reported ready");
+        }
+        else if (started == RdpSession.FetchStart.Started)
             Notifications.Instance.Info($"{Info.Name}: Clipboard: fetching {what} into {dest}");
         else
             Notifications.Instance.Warn($"{Info.Name}: Clipboard: could not start fetching {what} (a transfer is already running or the session offered nothing)");
@@ -353,7 +362,14 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
             return;
         }
         var top = TopLevel.GetTopLevel(View);
-        AppLog.Trace($"{Info.Name}: transfer finished, {files} file(s) in {dest} (folder exists: {Directory.Exists(dest)}, window: {top is not null})");
+        AppLog.Trace($"{Info.Name}: transfer finished, {files} file(s) in {dest} (folder exists: {Directory.Exists(dest)}, window: {top is not null}, promised: {_fetchPromised})");
+        if (_fetchPromised && Native.mr_pasteboard_change_count() != _lastPasteboardChange)
+        {
+            // Finder only honours file promises for drag and drop, so the real URLs must be written now; but the user
+            // copied something else meanwhile, and that must not be replaced behind their back
+            Notifications.Instance.Warn($"{Info.Name}: Clipboard: {files} file(s) from the session were received, but the Mac clipboard changed meanwhile; they are in {dest}");
+            return;
+        }
         if (top is null || !Directory.Exists(dest)) { Notifications.Instance.Warn($"{Info.Name}: Clipboard: received files, but {dest} is missing"); return; }
         var transfer = new DataTransfer();
         var names = new List<string>();

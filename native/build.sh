@@ -9,8 +9,9 @@ mkdir -p $OUT
 clang -dynamiclib -arch arm64 -mmacosx-version-min=14.0 -O2 -fvisibility=hidden \
   -Wall -Wno-unused-parameter \
   -I$DEPS/include/freerdp3 -I$DEPS/include/winpr3 \
-  $HERE/mrrdp.c $HERE/kbd_mac.c $HERE/clip_mac.c $HERE/keychain_mac.c \
-  -L$DEPS/lib -lfreerdp-client3 -lfreerdp3 -lwinpr3 -framework Carbon -framework AppKit -framework Security -lobjc \
+  $HERE/mrrdp.c $HERE/kbd_mac.c $HERE/clip_mac.c $HERE/keychain_mac.c $HERE/promise_mac.m -fobjc-arc \
+  -L$DEPS/lib -lfreerdp-client3 -lfreerdp3 -lwinpr3 -framework Carbon -framework AppKit -framework Security \
+  -framework UniformTypeIdentifiers -lobjc \
   -Wl,-rpath,@loader_path \
   -install_name @rpath/libmrrdp.dylib \
   -o $OUT/libmrrdp.dylib

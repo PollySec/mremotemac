@@ -83,6 +83,7 @@ struct mr_session
 		int waiting_size;
 		int locked;
 		UINT32 clip_data_id;
+		int64_t promise;    /* file promises on the Mac pasteboard (promise_mac.m), 0 = none */
 	} dl;
 };
 
@@ -473,8 +474,15 @@ static UINT mr_cliprdr_server_capabilities(CliprdrClientContext* ctx,
 
 /* ----- download from the session ----- */
 
+/* promise_mac.m */
+int64_t mr_promise_publish(const char* dest_dir, const char* names, const char* kinds);
+void mr_promise_complete(int64_t token, const char* error);
+static int uri_append(char** buf, size_t* cap, size_t* len, const char* text);
+
 static void dl_reset(mr_session* s)
 {
+	if (s->dl.promise)
+		mr_promise_complete(s->dl.promise, "the transfer was cancelled");
 	if (s->dl.fp)
 		fclose(s->dl.fp);
 	free(s->dl.cur_path);
@@ -494,6 +502,11 @@ static void dl_finish(mr_session* s, const char* error)
 	}
 	char* dest = s->dl.dest ? _strdup(s->dl.dest) : NULL;
 	UINT32 files = s->dl.files;
+	if (s->dl.promise)
+	{
+		mr_promise_complete(s->dl.promise, error);
+		s->dl.promise = 0;
+	}
 	dl_reset(s);
 	if (s->cb.on_clipboard_files_done)
 		s->cb.on_clipboard_files_done(s->cb.user, dest ? dest : "", (int32_t)files, error);
@@ -753,6 +766,32 @@ int32_t mr_clipboard_fetch_files(mr_session* s, const char* dest_dir)
 		else if (fd->dwFlags & FD_FILESIZE)
 			s->dl.total += ((UINT64)fd->nFileSizeHigh << 32) | fd->nFileSizeLow;
 	}
+	/* promises for the top-level entries go on the Mac pasteboard now; a paste completes once the data is in */
+	{
+		char* names = NULL;
+		size_t ncap = 0, nlen = 0;
+		char* kinds = calloc(s->remote_file_count + 1, 1);
+		size_t k = 0;
+		for (UINT32 i = 0; i < s->remote_file_count && kinds; i++)
+		{
+			const FILEDESCRIPTORW* fd = &s->remote_files[i];
+			char* rel = dl_relative_path(fd);
+			if (!rel)
+				continue;
+			if (!strchr(rel, '/'))
+			{
+				const int dir = (fd->dwFlags & FD_ATTRIBUTES) && (fd->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY);
+				if (uri_append(&names, &ncap, &nlen, rel) && uri_append(&names, &ncap, &nlen, "\n"))
+					kinds[k++] = dir ? 'd' : 'f';
+			}
+			free(rel);
+		}
+		if (names && kinds && k > 0)
+			s->dl.promise = mr_promise_publish(dest_dir, names, kinds);
+		mr_tracef(s, "file promises for %zu top-level item(s): %s", k, s->dl.promise ? "on the Mac pasteboard" : "NOT published");
+		free(names);
+		free(kinds);
+	}
 	if (s->remote_caps_flags & CB_CAN_LOCK_CLIPDATA)
 	{
 		CLIPRDR_LOCK_CLIPBOARD_DATA l = { 0 };
@@ -765,8 +804,9 @@ int32_t mr_clipboard_fetch_files(mr_session* s, const char* dest_dir)
 		}
 	}
 	mr_logf(s, "Clipboard: fetching %u item(s) from the session into %s", (unsigned)s->remote_file_count, dest_dir);
+	const int32_t promised = s->dl.promise ? 2 : 1;
 	dl_next_file(s);
-	return 1;
+	return promised;
 }
 
 static void clip_forget_remote_files(mr_session* s)
