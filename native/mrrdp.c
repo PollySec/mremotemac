@@ -31,6 +31,10 @@
 #include <winpr/clipboard.h>
 #include <winpr/shell.h>
 #include <winpr/wlog.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+#define MR_CLIP_WINDOW 4 /* File Contents Requests kept in flight while downloading */
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <errno.h>
@@ -74,13 +78,24 @@ struct mr_session
 		char* dest;
 		UINT32 index;       /* current descriptor */
 		UINT64 size;        /* of the current file */
-		UINT64 offset;
+		UINT64 next_offset; /* first byte not yet requested */
+		UINT64 received;    /* bytes written for the current file */
 		UINT64 total, done; /* bytes over all files */
 		UINT32 files;       /* non-directory entries */
-		FILE* fp;
+		int fd;             /* current target file, -1 when none */
 		char* cur_path;
-		UINT32 stream_id;
-		int waiting_size;
+		UINT32 size_stream; /* stream id of the pending FILECONTENTS_SIZE request, 0 when none */
+		UINT32 chunk;       /* current request size: starts small, doubles while responses are quick and complete */
+		int no_grow;        /* a refusal or a slow response pinned the request size */
+		int window;         /* requests kept in flight: 1 until the first range response proves the server copes */
+		int zero_retried;   /* an empty response before the end of the file was already asked for again once */
+		struct
+		{
+			UINT32 stream_id; /* 0 = slot free */
+			UINT64 offset;
+			UINT32 len;
+			uint64_t sent_ms;
+		} inflight[MR_CLIP_WINDOW];
 		int locked;
 		UINT32 clip_data_id;
 		int64_t promise;    /* file promises on the Mac pasteboard (promise_mac.m), 0 = none */
@@ -350,7 +365,9 @@ static void mr_register_session(mr_session* s)
 			cb.message = mr_wlog_message;
 			if (a)
 				(void)WLog_ConfigureAppender(a, "callbacks", &cb);
-			(void)WLog_SetLogLevel(l, WLOG_DEBUG); /* debug lines go to the log file only, warnings also to the panel */
+			/* debug lines go to the log file only, warnings also to the panel; the channel logger prints several
+			 * lines per PDU at DEBUG, which is noise at hundreds of PDUs per file, so it stays at INFO */
+			(void)WLog_SetLogLevel(l, i == 0 ? WLOG_DEBUG : i == 1 ? WLOG_INFO : WLOG_WARN);
 		}
 	}
 	pthread_mutex_unlock(&g_sessions_lock);
@@ -367,7 +384,15 @@ static void mr_unregister_session(mr_session* s)
 
 /* ---------- clipboard: text and files (MS-RDPECLIP) ---------- */
 
-#define MR_CLIP_CHUNK (1024u * 1024u)  /* bytes per File Contents Request when downloading (FreeRDP caps at 8 MiB) */
+/* Downloading from the session: a File Contents Request per range. Each request costs a full round trip plus the
+ * server's own handling time (measured ~0.4 s per request against Windows on a LAN, more over VPN), so the request
+ * size grows from MR_CLIP_CHUNK_MIN towards MR_CLIP_CHUNK_MAX while responses come back quick and complete, and
+ * MR_CLIP_WINDOW requests are kept in flight so latency overlaps with transfer. A refusal pins the size back to the
+ * minimum and the range is asked for again. */
+#define MR_CLIP_CHUNK_MIN (1u << 20)
+#define MR_CLIP_CHUNK_MAX (8u << 20)
+#define MR_CLIP_CHUNK_FLOOR (64u << 10)  /* below this a refusal ends the transfer */
+#define MR_CLIP_SLOW_MS 2500u          /* a response slower than this stops the growth (progress granularity on slow links) */
 #define MR_CLIP_PROGRESS_STEP (1u << 20)
 
 static const char type_FileGroupDescriptorW[] = "FileGroupDescriptorW";
@@ -483,11 +508,12 @@ static void dl_reset(mr_session* s)
 {
 	if (s->dl.promise)
 		mr_promise_complete(s->dl.promise, "the transfer was cancelled");
-	if (s->dl.fp)
-		fclose(s->dl.fp);
+	if (s->dl.fd >= 0)
+		close(s->dl.fd);
 	free(s->dl.cur_path);
 	free(s->dl.dest);
 	memset(&s->dl, 0, sizeof(s->dl));
+	s->dl.fd = -1;
 }
 
 static void dl_finish(mr_session* s, const char* error)
@@ -554,32 +580,88 @@ static int dl_mkdirs(const char* path)
 	return ok;
 }
 
-static void dl_request(mr_session* s, UINT32 flags, UINT32 cb)
+static int dl_inflight_count(const mr_session* s)
+{
+	int n = 0;
+	for (int i = 0; i < MR_CLIP_WINDOW; i++)
+		if (s->dl.inflight[i].stream_id)
+			n++;
+	return n;
+}
+
+/* sends one File Contents Request; returns 0 and finishes the transfer when the channel refuses */
+static int dl_send(mr_session* s, UINT32 flags, UINT64 offset, UINT32 cb, UINT32* stream_out)
 {
 	CliprdrClientContext* clip = clip_ctx(s);
 	if (!clip)
 	{
 		dl_finish(s, "clipboard channel is gone");
-		return;
+		return 0;
 	}
 	CLIPRDR_FILE_CONTENTS_REQUEST req = { 0 };
 	req.common.msgType = CB_FILECONTENTS_REQUEST;
 	req.streamId = ++s->stream_counter;
+	if (req.streamId == 0)
+		req.streamId = ++s->stream_counter;
 	req.listIndex = s->dl.index;
 	req.dwFlags = flags;
-	req.nPositionLow = (UINT32)(s->dl.offset & 0xFFFFFFFFu);
-	req.nPositionHigh = (UINT32)(s->dl.offset >> 32);
+	req.nPositionLow = (UINT32)(offset & 0xFFFFFFFFu);
+	req.nPositionHigh = (UINT32)(offset >> 32);
 	req.cbRequested = cb;
 	req.haveClipDataId = s->dl.locked ? TRUE : FALSE;
 	req.clipDataId = s->dl.clip_data_id;
-	s->dl.stream_id = req.streamId;
-	s->dl.waiting_size = flags == FILECONTENTS_SIZE;
-	UINT rc = clip->ClientFileContentsRequest(clip, &req);
-	if (rc != CHANNEL_RC_OK)
+	*stream_out = req.streamId;
+	if (clip->ClientFileContentsRequest(clip, &req) != CHANNEL_RC_OK)
+	{
 		dl_finish(s, "could not request file contents");
+		return 0;
+	}
+	return 1;
+}
+
+/* keeps MR_CLIP_WINDOW range requests in flight for the current file */
+static void dl_pump(mr_session* s)
+{
+	while (s->dl.active && s->dl.next_offset < s->dl.size)
+	{
+		int slot = -1;
+		for (int i = 0; i < MR_CLIP_WINDOW; i++)
+			if (!s->dl.inflight[i].stream_id)
+			{
+				slot = i;
+				break;
+			}
+		if (slot < 0 || dl_inflight_count(s) >= s->dl.window)
+			return;
+		const UINT64 left = s->dl.size - s->dl.next_offset;
+		const UINT32 cb = left < s->dl.chunk ? (UINT32)left : s->dl.chunk;
+		UINT32 stream = 0;
+		const UINT64 offset = s->dl.next_offset;
+		if (!dl_send(s, FILECONTENTS_RANGE, offset, cb, &stream))
+			return;
+		s->dl.inflight[slot].stream_id = stream;
+		s->dl.inflight[slot].offset = offset;
+		s->dl.inflight[slot].len = cb;
+		s->dl.inflight[slot].sent_ms = mr_now_ms();
+		s->dl.next_offset += cb;
+	}
 }
 
 static void dl_close_current(mr_session* s);
+
+static void dl_start_ranges(mr_session* s)
+{
+	s->dl.next_offset = 0;
+	s->dl.received = 0;
+	s->dl.zero_retried = 0;
+	memset(s->dl.inflight, 0, sizeof(s->dl.inflight));
+	if (s->dl.size > 0xFFFFFFFFull && !(s->remote_caps_flags & CB_HUGE_FILE_SUPPORT_ENABLED))
+	{
+		dl_finish(s, "a file is 4 GiB or larger and the session did not negotiate huge file support");
+		return;
+	}
+	dl_pump(s);
+}
 
 static void dl_next_file(mr_session* s)
 {
@@ -619,15 +701,14 @@ static void dl_next_file(mr_session* s)
 			}
 			*slash = '/';
 		}
-		s->dl.fp = fopen(path, "wb");
-		if (!s->dl.fp)
+		s->dl.fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+		if (s->dl.fd < 0)
 		{
 			free(path);
 			dl_finish(s, "could not create the target file");
 			return;
 		}
 		s->dl.cur_path = path;
-		s->dl.offset = 0;
 		s->dl.files++;
 		if (fd->dwFlags & FD_FILESIZE)
 		{
@@ -638,10 +719,10 @@ static void dl_next_file(mr_session* s)
 				s->dl.index++;
 				continue;
 			}
-			dl_request(s, FILECONTENTS_RANGE, (UINT32)(s->dl.size - s->dl.offset < MR_CLIP_CHUNK ? s->dl.size - s->dl.offset : MR_CLIP_CHUNK));
+			dl_start_ranges(s);
 		}
 		else
-			dl_request(s, FILECONTENTS_SIZE, 8);
+			(void)dl_send(s, FILECONTENTS_SIZE, 0, 8, &s->dl.size_stream);
 		return;
 	}
 	dl_finish(s, NULL);
@@ -649,10 +730,10 @@ static void dl_next_file(mr_session* s)
 
 static void dl_close_current(mr_session* s)
 {
-	if (s->dl.fp)
+	if (s->dl.fd >= 0)
 	{
-		fclose(s->dl.fp);
-		s->dl.fp = NULL;
+		close(s->dl.fd);
+		s->dl.fd = -1;
 	}
 	const FILEDESCRIPTORW* fd = s->dl.index < s->remote_file_count ? &s->remote_files[s->dl.index] : NULL;
 	if (fd && s->dl.cur_path && (fd->dwFlags & FD_WRITESTIME))
@@ -673,19 +754,39 @@ static void dl_close_current(mr_session* s)
 	s->dl.cur_path = NULL;
 }
 
+static void dl_file_done(mr_session* s)
+{
+	dl_close_current(s);
+	s->dl.index++;
+	dl_next_file(s);
+}
+
+static void dl_progress(mr_session* s, UINT64 before, int force)
+{
+	if (!s->cb.on_clipboard_progress)
+		return;
+	if (!force && s->dl.done / MR_CLIP_PROGRESS_STEP == before / MR_CLIP_PROGRESS_STEP)
+		return;
+	const char* name = s->dl.cur_path ? strrchr(s->dl.cur_path, '/') : NULL;
+	s->cb.on_clipboard_progress(s->cb.user, s->dl.done, s->dl.total, name ? name + 1 : (s->dl.cur_path ? s->dl.cur_path : ""));
+}
+
 static UINT mr_cliprdr_server_file_contents_response(CliprdrClientContext* ctx,
                                                      const CLIPRDR_FILE_CONTENTS_RESPONSE* resp)
 {
 	mr_session* s = clip_session(ctx);
-	if (!s->dl.active || resp->streamId != s->dl.stream_id)
-		return CHANNEL_RC_OK; /* late or foreign stream */
-	if (!(resp->common.msgFlags & CB_RESPONSE_OK))
-	{
-		dl_finish(s, "the session refused to send the file contents");
+	if (!s->dl.active)
 		return CHANNEL_RC_OK;
-	}
-	if (s->dl.waiting_size)
+
+	/* ----- size response ----- */
+	if (s->dl.size_stream && resp->streamId == s->dl.size_stream)
 	{
+		s->dl.size_stream = 0;
+		if (!(resp->common.msgFlags & CB_RESPONSE_OK))
+		{
+			dl_finish(s, "the session refused to send the file contents");
+			return CHANNEL_RC_OK;
+		}
 		if (resp->cbRequested < 8)
 		{
 			dl_finish(s, "malformed file size response");
@@ -696,38 +797,117 @@ static UINT mr_cliprdr_server_file_contents_response(CliprdrClientContext* ctx,
 		s->dl.size = size;
 		s->dl.total += size;
 		if (size == 0)
+			dl_file_done(s);
+		else
+			dl_start_ranges(s);
+		return CHANNEL_RC_OK;
+	}
+
+	/* ----- range response: find its slot ----- */
+	int slot = -1;
+	for (int i = 0; i < MR_CLIP_WINDOW; i++)
+		if (s->dl.inflight[i].stream_id && s->dl.inflight[i].stream_id == resp->streamId)
 		{
-			dl_close_current(s);
-			s->dl.index++;
-			dl_next_file(s);
+			slot = i;
+			break;
+		}
+	if (slot < 0)
+		return CHANNEL_RC_OK; /* late or foreign stream */
+	const UINT64 offset = s->dl.inflight[slot].offset;
+	const UINT32 asked = s->dl.inflight[slot].len;
+	const uint64_t took = mr_now_ms() - s->dl.inflight[slot].sent_ms;
+	s->dl.inflight[slot].stream_id = 0;
+
+	if (!(resp->common.msgFlags & CB_RESPONSE_OK))
+	{
+		if (asked <= MR_CLIP_CHUNK_FLOOR)
+		{
+			dl_finish(s, "the session refused to send the file contents");
 			return CHANNEL_RC_OK;
 		}
-		dl_request(s, FILECONTENTS_RANGE, (UINT32)(size < MR_CLIP_CHUNK ? size : MR_CLIP_CHUNK));
+		/* the server did not like that request size: halve it, go back to one request at a time, and ask for
+		 * everything from this range on again (later ranges still in flight are dropped and re-requested) */
+		s->dl.chunk = asked / 2 < MR_CLIP_CHUNK_FLOOR ? MR_CLIP_CHUNK_FLOOR : asked / 2;
+		mr_tracef(s, "range request of %u bytes at %llu refused, continuing with %u-byte requests", (unsigned)asked,
+		          (unsigned long long)offset, (unsigned)s->dl.chunk);
+		s->dl.no_grow = 1;
+		s->dl.window = 1;
+		for (int i = 0; i < MR_CLIP_WINDOW; i++)
+			if (s->dl.inflight[i].stream_id && s->dl.inflight[i].offset > offset)
+				s->dl.inflight[i].stream_id = 0;
+		s->dl.next_offset = offset;
+		dl_pump(s);
 		return CHANNEL_RC_OK;
 	}
+
 	UINT32 n = resp->cbRequested;
-	if (n > 0 && fwrite(resp->requestedData, 1, n, s->dl.fp) != n)
+	if (n > asked)
+		n = asked;
+	if (n > 0)
 	{
-		dl_finish(s, "could not write the file (disk full?)");
-		return CHANNEL_RC_OK;
+		const BYTE* p = resp->requestedData;
+		UINT64 at = offset;
+		UINT32 left = n;
+		while (left > 0)
+		{
+			ssize_t w = pwrite(s->dl.fd, p, left, (off_t)at);
+			if (w <= 0)
+			{
+				dl_finish(s, "could not write the file (disk full?)");
+				return CHANNEL_RC_OK;
+			}
+			p += w;
+			at += (UINT64)w;
+			left -= (UINT32)w;
+		}
 	}
-	UINT64 before = s->dl.done;
-	s->dl.offset += n;
+	const UINT64 before = s->dl.done;
+	s->dl.received += n;
 	s->dl.done += n;
-	if (s->cb.on_clipboard_progress && (s->dl.done / MR_CLIP_PROGRESS_STEP != before / MR_CLIP_PROGRESS_STEP || s->dl.offset >= s->dl.size || n == 0))
+
+	if (n == 0 && offset < s->dl.size && !s->dl.zero_retried)
 	{
-		const char* name = strrchr(s->dl.cur_path, '/');
-		s->cb.on_clipboard_progress(s->cb.user, s->dl.done, s->dl.total, name ? name + 1 : s->dl.cur_path);
-	}
-	if (n == 0 || s->dl.offset >= s->dl.size)
-	{
-		dl_close_current(s);
-		s->dl.index++;
-		dl_next_file(s);
+		/* an empty answer before the end: ask once more before believing the file ended here */
+		s->dl.zero_retried = 1;
+		mr_tracef(s, "empty response at %llu of %llu, asking again", (unsigned long long)offset, (unsigned long long)s->dl.size);
+		for (int i = 0; i < MR_CLIP_WINDOW; i++)
+			if (s->dl.inflight[i].stream_id && s->dl.inflight[i].offset > offset)
+				s->dl.inflight[i].stream_id = 0;
+		s->dl.next_offset = offset;
+		s->dl.window = 1;
+		dl_pump(s);
 		return CHANNEL_RC_OK;
 	}
-	UINT64 left = s->dl.size - s->dl.offset;
-	dl_request(s, FILECONTENTS_RANGE, (UINT32)(left < MR_CLIP_CHUNK ? left : MR_CLIP_CHUNK));
+	if (n < asked)
+	{
+		/* the file ended early (it shrank on the server): what is beyond this point is not coming */
+		s->dl.size = offset + n;
+		for (int i = 0; i < MR_CLIP_WINDOW; i++)
+			if (s->dl.inflight[i].stream_id && s->dl.inflight[i].offset >= s->dl.size)
+				s->dl.inflight[i].stream_id = 0;
+		if (s->dl.next_offset > s->dl.size)
+			s->dl.next_offset = s->dl.size;
+	}
+	else
+	{
+		if (s->dl.window < MR_CLIP_WINDOW)
+			s->dl.window = MR_CLIP_WINDOW; /* the first response proved the server copes: open the window */
+		if (!s->dl.no_grow)
+		{
+			if (took > MR_CLIP_SLOW_MS)
+				s->dl.no_grow = 1; /* slow link: keep the pieces small so progress stays visible */
+			else if (s->dl.chunk < MR_CLIP_CHUNK_MAX && asked >= s->dl.chunk)
+				s->dl.chunk *= 2;
+		}
+	}
+
+	dl_progress(s, before, s->dl.received >= s->dl.size);
+	if (s->dl.received >= s->dl.size && dl_inflight_count(s) == 0)
+	{
+		dl_file_done(s);
+		return CHANNEL_RC_OK;
+	}
+	dl_pump(s);
 	return CHANNEL_RC_OK;
 }
 
@@ -746,6 +926,9 @@ int32_t mr_clipboard_fetch_files(mr_session* s, const char* dest_dir, int64_t* p
 		return 0;
 	memset(&s->dl, 0, sizeof(s->dl));
 	s->dl.active = 1;
+	s->dl.fd = -1;
+	s->dl.chunk = MR_CLIP_CHUNK_MIN;
+	s->dl.window = 1;
 	s->dl.dest = _strdup(dest_dir);
 	/* directories first, so empty folders exist even when nothing is downloaded into them */
 	for (UINT32 i = 0; i < s->remote_file_count; i++)
@@ -1487,6 +1670,7 @@ mr_session* mr_session_create(const mr_callbacks* callbacks)
 		return NULL;
 	if (callbacks)
 		s->cb = *callbacks;
+	s->dl.fd = -1;
 	pthread_mutex_init(&s->clip_lock, NULL);
 	pthread_mutex_init(&s->chan_lock, NULL);
 	s->clip_sys = ClipboardCreate();

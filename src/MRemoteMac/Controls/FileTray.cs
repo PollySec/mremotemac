@@ -33,6 +33,7 @@ public sealed class FileTray : Border
     private readonly ProgressBar _progress = new() { Height = 4, MinHeight = 4, Minimum = 0, Maximum = 1, CornerRadius = new CornerRadius(2), Margin = new Thickness(0, 7, 0, 0) };
     private readonly Button _close = new() { Classes = { "tray-close" }, Content = new Icon { Glyph = "x", Size = 13, StrokeThickness = 2 }, VerticalAlignment = VerticalAlignment.Top };
     private readonly DispatcherTimer _hideTimer;
+    private readonly DispatcherTimer _autoHide; // the card leaves by itself a while after the files are ready
 
     private long _token;
     private bool _pressed;
@@ -93,6 +94,14 @@ public sealed class FileTray : Border
             Children = { Dock(grip, Avalonia.Controls.Dock.Left), Dock(tile, Avalonia.Controls.Dock.Left), Dock(_close, Avalonia.Controls.Dock.Right), text },
         };
         _hideTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(300), DispatcherPriority.Background, (_, _) => OnHideTimer());
+        _autoHide = new DispatcherTimer(TimeSpan.FromSeconds(90), DispatcherPriority.Background, (_, _) => OnAutoHide());
+    }
+
+    private void OnAutoHide()
+    {
+        if (IsPointerOver || _pressed) return; // the user is about to drag it: stay
+        _autoHide.Stop();
+        Hide();
     }
 
     private void OnHideTimer()
@@ -126,6 +135,7 @@ public sealed class FileTray : Border
         _progress.Value = 0;
         _status.Text = totalBytes > 0 ? $"Fetching · 0 of {Mb(totalBytes)} MB · drag me to the Finder now" : "Fetching · drag me to the Finder now";
         _hideTimer.Stop();
+        _autoHide.Stop();
         IsVisible = true;
         Dispatcher.UIThread.Post(() => { Opacity = 1; RenderTransform = Shown; }, DispatcherPriority.Background);
     }
@@ -149,6 +159,7 @@ public sealed class FileTray : Border
             _stateIcon.Glyph = "circle-check";
             _stateIcon[!Icon.ForegroundProperty] = new DynamicResourceExtension("StatusSuccessBrush");
             _status.Text = "Ready · drag to the Finder, or ⌘V there";
+            _autoHide.Start();
         }
         else
         {
@@ -160,6 +171,7 @@ public sealed class FileTray : Border
 
     public void Hide()
     {
+        _autoHide.Stop();
         if (!IsVisible) return;
         Opacity = 0;
         RenderTransform = Hidden;

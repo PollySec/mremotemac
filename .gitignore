@@ -6,3 +6,4 @@ native/out/
 native/build/
 *.user
 dist/
+tools/clipsrv/out/

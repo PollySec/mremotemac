@@ -62,3 +62,22 @@ and its interop API needs timeline semaphores. Not worth enabling until Avalonia
   far less data than the legacy bitmap path.
 - FitToWindow asks the server for the panel size, so no scaling happens on the Mac. SmartSize scales on the GPU with
   linear filtering (the cheapest filter that still looks right).
+
+## Clipboard file transfer
+
+Files from the session are pulled with File Contents Request PDUs (MS-RDPECLIP). Each request costs a round trip plus
+the server's own handling time; Windows' rdpclip was measured at about 0.4 s per request on a LAN regardless of size,
+and rdpclip itself reads with 256 KiB requests when it is the one fetching. The downloader (`native/mrrdp.c`,
+`dl_*`) therefore:
+
+- takes the size from the file list (`FD_FILESIZE`) and only sends a `FILECONTENTS_SIZE` request when it is missing;
+- starts with 1 MiB requests and doubles up to 8 MiB while responses come back complete within 2.5 s;
+- keeps four requests in flight once the first one succeeded, matching responses by stream id and writing with
+  `pwrite` at each request's offset, so order does not matter;
+- halves the size and goes back to one request at a time when a server refuses a request (floor 64 KiB), re-asks
+  once on an empty answer before the end of the file, and treats a short answer as the file having shrunk;
+- locks the remote clipboard data for the whole transfer when the server supports it.
+
+Measured with `tools/clipsrv` (150 ms simulated handling time per request): 40 MB in 1.8 s with 11 requests, against
+6 s with fixed 1 MiB requests. Uploads are driven by the server's own request size (rdpclip: 256 KiB) and are
+answered within a millisecond, so there is nothing to tune on this side.

@@ -3,6 +3,23 @@
 All notable changes to mRemoteMac are documented here. The format follows [Keep a Changelog](https://keepachangelog.com)
 and versions follow [Semantic Versioning](https://semver.org) via git tags (MinVer).
 
+## [1.2.1] – 2026-10-12
+
+### Changed
+- **Faster downloads from the session.** Files are fetched with requests that grow from 1 MiB to 8 MiB while the
+  server answers promptly, and four requests are kept in flight, so the per-request cost of the server (about
+  0.4 s on Windows' rdpclip, more over VPN) is paid a few times instead of once per megabyte. Against a server that
+  refuses a large request the size halves and the range is asked for again; a slow link keeps the pieces small so
+  progress stays visible. Measured against a test server with 150 ms per request: 40 MB in 1.8 s instead of 6 s.
+- The file card leaves by itself 90 seconds after the files are ready (not while the pointer is over it).
+- Log lines are buffered and flushed twice a second (warnings at once); FreeRDP's channel chatter stays at INFO so a
+  large transfer no longer writes several lines per PDU.
+
+### Added
+- `tools/clipsrv`: a clipboard-capable test server (FreeRDP's sample server plus an rdpclip-like file clipboard)
+  with switches for latency, refusal of large requests and fetching what the client announces, used to verify both
+  directions without a Windows host.
+
 ## [1.2.0] – 2026-10-12
 
 ### Added
