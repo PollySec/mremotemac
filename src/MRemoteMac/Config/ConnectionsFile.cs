@@ -104,10 +104,28 @@ public static class ConnectionsFile
 
     private static ConnectionInfo ReadNode(XmlElement el, ICryptographyProvider crypto, string password, double confVersion)
     {
-        var typeText = Attr(el, "Type", "Connection");
-        var isContainer = typeText.Equals("Container", StringComparison.OrdinalIgnoreCase);
-        ConnectionInfo node = isContainer ? new ContainerInfo() : new ConnectionInfo();
+        var node = NewNode(Attr(el, "Type", "Connection"));
+        ReadAttributes(node, el.Attributes.Cast<XmlAttribute>().Select(a => new KeyValuePair<string, string>(a.Name, a.Value)),
+            v => { try { return crypto.Decrypt(v, password); } catch (EncryptionException) { return ""; } }, confVersion);
+        if (node is ContainerInfo container)
+            foreach (XmlNode child in el.ChildNodes)
+                if (child is XmlElement { Name: "Node" } childEl)
+                    container.AddChild(ReadNode(childEl, crypto, password, confVersion));
+        return node;
+    }
 
+    /// <summary>A node of the given mRemoteNG "Type" attribute ("Connection" or "Container").</summary>
+    public static ConnectionInfo NewNode(string typeText)
+        => typeText.Equals("Container", StringComparison.OrdinalIgnoreCase) ? new ContainerInfo() : new ConnectionInfo();
+
+    /// <summary>
+    /// Applies mRemoteNG attributes to a node: the same code path for a confCons.xml element and for a record from the
+    /// database, so both formats stay in lock-step. <paramref name="decryptSecret"/> turns a stored password attribute
+    /// into plain text (identity for the database, AES-GCM for the file).
+    /// </summary>
+    public static void ReadAttributes(ConnectionInfo node, IEnumerable<KeyValuePair<string, string>> attributes,
+        Func<string, string> decryptSecret, double confVersion = 2.9)
+    {
         var props = ConnectionInfo.FileProperties.ToDictionary(p => p.Name, StringComparer.OrdinalIgnoreCase);
         var aliases = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -115,9 +133,9 @@ public static class ConnectionsFile
             ["StartProgram"] = "RdpStartProgram", ["StartProgramWorkDir"] = "RdpStartProgramWorkDir",
         };
 
-        foreach (XmlAttribute a in el.Attributes)
+        foreach (var a in attributes)
         {
-            var name = a.Name;
+            var name = a.Key;
             var value = a.Value;
             if (name.StartsWith("xmlns", StringComparison.Ordinal)) continue;
             if (name.StartsWith("Inherit", StringComparison.Ordinal) && name.Length > 7)
@@ -138,11 +156,8 @@ public static class ConnectionsFile
             }
             if (aliases.TryGetValue(name, out var alias)) name = alias;
 
-            if (Array.IndexOf(SecretAttributes, a.Name) >= 0)
-            {
-                try { value = crypto.Decrypt(value, password); }
-                catch (EncryptionException) { value = ""; }
-            }
+            if (Array.IndexOf(SecretAttributes, a.Key) >= 0)
+                value = decryptSecret(value);
 
             if (name == "RedirectDiskDrives" && confVersion < 2.8)
             {
@@ -156,16 +171,9 @@ public static class ConnectionsFile
             if (props.TryGetValue(name, out var prop))
                 SetFromString(node, prop, value);
             else
-                node.UnknownAttributes[a.Name] = a.Value;
+                node.UnknownAttributes[a.Key] = a.Value;
         }
 
-        if (node is ContainerInfo container)
-        {
-            foreach (XmlNode child in el.ChildNodes)
-                if (child is XmlElement { Name: "Node" } childEl)
-                    container.AddChild(ReadNode(childEl, crypto, password, confVersion));
-        }
-        return node;
     }
 
     private static void SetFromString(ConnectionInfo node, PropertyInfo prop, string value)
@@ -243,9 +251,25 @@ public static class ConnectionsFile
     private static XElement WriteNode(ConnectionInfo n, ICryptographyProvider crypto, string password)
     {
         var el = new XElement("Node");
+        foreach (var a in NodeAttributes(n, v => crypto.Encrypt(v, password)))
+            el.SetAttributeValue(a.Key, a.Value);
+        if (n is ContainerInfo container)
+            foreach (var child in container.Children)
+                el.Add(WriteNode(child, crypto, password));
+        return el;
+    }
+
+    /// <summary>
+    /// Every attribute mRemoteNG 1.77 writes for a node, in its order: the single source of truth for the XML file and
+    /// for the database records. <paramref name="encryptSecret"/> protects password attributes (identity for the
+    /// database, which is encrypted as a whole).
+    /// </summary>
+    public static List<KeyValuePair<string, string>> NodeAttributes(ConnectionInfo n, Func<string, string> encryptSecret)
+    {
+        var list = new List<KeyValuePair<string, string>>(96);
         var container = n as ContainerInfo;
-        void A(string name, string value) => el.SetAttributeValue(name, value);
-        string Enc(string s) => string.IsNullOrEmpty(s) ? "" : crypto.Encrypt(s, password);
+        void A(string name, string value) => list.Add(new KeyValuePair<string, string>(name, value));
+        string Enc(string s) => string.IsNullOrEmpty(s) ? "" : encryptSecret(s);
         string Unk(string name, string def) => n.UnknownAttributes.TryGetValue(name, out var v) ? v : def;
 
         A("Name", n.Name);
@@ -350,9 +374,6 @@ public static class ConnectionsFile
         foreach (var inh in n.Inheritance.OrderBy(x => x, StringComparer.Ordinal))
             A("Inherit" + inh, "true");
 
-        if (container is not null)
-            foreach (var child in container.Children)
-                el.Add(WriteNode(child, crypto, password));
-        return el;
+        return list;
     }
 }

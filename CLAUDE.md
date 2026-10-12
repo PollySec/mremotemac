@@ -4,6 +4,9 @@
   No other company name or e-mail identity may appear anywhere (commits, docs, metadata, test data, screenshots).
 - GitHub home: `PollySec/mremotemac` (public). Bundle id `com.pollysec.mremotemac`.
 - Build: `./native/build-deps.sh` (once), `./native/build.sh`, `dotnet build src/MRemoteMac`; tests `dotnet test tests/MRemoteMac.Tests`.
+- Storage: `docs/storage.md`. Connections are in an encrypted SQLite database (`Config/SqliteConnectionStore`, key model in
+  `Config/VaultHeader` + `Config/ConnectionStores`); XML stays import/export/alternative store. Both formats go through
+  `ConnectionsFile.NodeAttributes` / `ReadAttributes` – never serialize a node any other way.
 - Performance: read `docs/performance.md` before touching the frame path; `MRM_FRAMEBENCH=WxH@fps[:dirty%]` (debug) measures it.
 - UI audit: debug builds accept `MRM_SCRIPT=<script> MRM_OUT=<dir> MRM_HOME=<settings dir>` (see `Services/UiTestRunner.cs`).
 - Code rules: .NET 10 best practices, no `async void` (use `AsyncHelper.Fire`), RDP-thread events are marshalled with `Dispatcher.UIThread.Post`,

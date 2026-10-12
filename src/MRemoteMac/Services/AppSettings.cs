@@ -10,7 +10,10 @@ public sealed class AppSettings
         ? home
         : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Library", "Application Support", "mRemoteMac");
 
+    /// <summary>Legacy XML location (1.0.x); still honoured when it exists and no database has been created.</summary>
     public static string DefaultConnectionsPath => Path.Combine(Directory, "confCons.xml");
+    /// <summary>The encrypted database, the default store since 1.1.</summary>
+    public static string DefaultDatabasePath => Path.Combine(Directory, "connections.db");
     private static string SettingsPath => Path.Combine(Directory, "settings.json");
 
     public string? ConnectionsFilePath { get; set; }

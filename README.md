@@ -47,7 +47,9 @@ the same file format, running as a native arm64 app with sessions embedded in ta
   no IL in the bundle, about 53 MB on disk including FreeRDP and Skia), zero-copy framebuffer path from FreeRDP
   into the GPU-backed surface, no Rosetta, no Electron, no browser.
 - **Honest security**: certificates are verified and prompted for exactly like FreeRDP's own clients (trust is
-  stored in `~/Library/Application Support/mRemoteMac/freerdp`), credentials never leave the encrypted connection file, and nothing phones home.
+  stored in `~/Library/Application Support/mRemoteMac/freerdp`), connections live in an encrypted database whose key
+  sits in your login keychain or behind a master password, every save is a revision you can go back to, and nothing
+  phones home.
 
 ## Install
 
@@ -79,7 +81,8 @@ size of the tab (dynamic resolution), **SmartSize** scales a fixed desktop to fi
 
 | Area | Status |
 |---|---|
-| mRemoteNG file format | ✅ ConfVersion 2.6–2.9 read/write, master password, full-file encryption, legacy import (verified against mRemoteNG's own test vectors) |
+| Connection storage | ✅ encrypted SQLite database with revision history (default since 1.1, see [docs/storage.md](docs/storage.md)); first start imports an existing confCons.xml |
+| mRemoteNG file format | ✅ ConfVersion 2.6–2.9 import/export and live use, master password, full-file encryption, legacy import (verified against mRemoteNG's own test vectors) |
 | RDP core, TLS, NLA/CredSSP, certificate prompts, dynamic resolution, cursors, clipboard text | ✅ verified end-to-end against FreeRDP's test server |
 | Clipboard: text both ways (Mac ⇄ session), on by default for new connections | ✅ `Redirect ▸ Clipboard` per connection; files and images are not transferred |
 | Windows Server / Windows 11 hosts, RD Gateway, audio, drive/printer redirection | ⚠️ implemented through FreeRDP; please report what you see |

@@ -21,6 +21,7 @@ namespace MRemoteMac.Views;
 public sealed partial class MainWindow : Window
 {
     private static readonly FilePickerFileType ConnectionFileType = new("mRemoteNG connection file") { Patterns = ["*.xml"] };
+    private static readonly FilePickerFileType DatabaseFileType = new("mRemoteMac connection database") { Patterns = ["*.db"] };
 
     private readonly AppSettings _settings;
     private readonly MainViewModel _vm;
@@ -104,25 +105,7 @@ public sealed partial class MainWindow : Window
 
     private async Task OnOpenedAsync()
     {
-        var path = _settings.ConnectionsFilePath ?? AppSettings.DefaultConnectionsPath;
-        if (File.Exists(path)) await LoadFileWithPromptAsync(path);
-        else
-        {
-            // first start: create a default (empty, mRemoteNG-compatible) connection file right away
-            _vm.NewFile();
-            try
-            {
-                _vm.Save(path);
-                _settings.ConnectionsFilePath = path;
-                _settings.Save();
-                Notifications.Instance.Info($"Created a new connection file at {path}. Use File ▸ Import mRemoteNG File... to bring in an existing confCons.xml.");
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                _vm.FilePath = path;
-                Notifications.Instance.Error($"Could not create {path}: {ex.Message}");
-            }
-        }
+        await OpenInitialStoreAsync();
         _vm.SelectedNode = _vm.Root;
         FocusTree();
         await RunDevHooksAsync();
@@ -187,33 +170,93 @@ public sealed partial class MainWindow : Window
         Close();
     }
 
-    private async Task<bool> LoadFileWithPromptAsync(string path)
+    /// <summary>
+    /// Start-up: open the configured store. First start creates the encrypted database and, when a confCons.xml from
+    /// 1.0.x (or a path configured earlier) exists, imports it so nothing has to be done by hand.
+    /// </summary>
+    private async Task OpenInitialStoreAsync()
+    {
+        var configured = _settings.ConnectionsFilePath;
+        var dbPath = AppSettings.DefaultDatabasePath;
+        if (configured is not null && (File.Exists(configured) || ConnectionStores.IsDatabasePath(configured)))
+        {
+            if (await OpenStoreAsync(configured)) return;
+            if (ConnectionStores.IsDatabasePath(configured)) { _vm.UseStore(XmlConnectionStore.CreateNew(AppSettings.DefaultConnectionsPath)); return; }
+        }
+        var legacyXml = configured is not null && !ConnectionStores.IsDatabasePath(configured) ? configured : AppSettings.DefaultConnectionsPath;
+        var migrate = !File.Exists(dbPath) && File.Exists(legacyXml);
+        if (!await OpenStoreAsync(dbPath)) { _vm.UseStore(XmlConnectionStore.CreateNew(AppSettings.DefaultConnectionsPath)); return; }
+        if (migrate)
+        {
+            var imported = await ImportIntoCurrentAsync(legacyXml, asFolder: false);
+            if (imported >= 0)
+            {
+                _vm.Save($"Imported {imported} connections from {Path.GetFileName(legacyXml)}");
+                Notifications.Instance.Info($"Your connections were moved into the encrypted database {dbPath}. {legacyXml} was left untouched; File ▸ Export writes an mRemoteNG file whenever you need one.");
+            }
+        }
+        else if (_vm.Store?.History().Count == 0)
+        {
+            _vm.Save("Created");
+            Notifications.Instance.Info($"Created the encrypted connection database at {dbPath}. Use File ▸ Import mRemoteNG File… to bring in an existing confCons.xml.");
+        }
+    }
+
+    /// <summary>Opens a database or XML store with the right prompts and makes it current. False when cancelled or failed.</summary>
+    private async Task<bool> OpenStoreAsync(string path)
+    {
+        try
+        {
+            var store = await ConnectionStores.OpenAsync(path, (name, retry) => Dialogs.Dialogs.Password(this,
+                retry ? "Wrong password. Try again:" : $"{name} is protected. Enter the master password:", "Master password"));
+            if (store is null) return false;
+            _vm.UseStore(store);
+            _settings.ConnectionsFilePath = store.Location;
+            _settings.Save();
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Xml.XmlException or InvalidDataException or EncryptionException
+                                   or InvalidOperationException or Microsoft.Data.Sqlite.SqliteException)
+        {
+            Notifications.Instance.Error($"Could not open {path}: {ex.Message}");
+            await Dialogs.Dialogs.Message(this, "Open failed", $"Could not open {Path.GetFileName(path)}", detail: ex.Message);
+            return false;
+        }
+    }
+
+    /// <summary>Imports an mRemoteNG file into the current tree. Returns the number of connections, or -1 when cancelled/failed.</summary>
+    private async Task<int> ImportIntoCurrentAsync(string path, bool asFolder)
     {
         string? password = null;
         for (var attempt = 0; attempt < 3; attempt++)
         {
             try
             {
-                _vm.LoadFile(path, password);
-                _settings.ConnectionsFilePath = path;
-                _settings.Save();
-                return true;
+                var r = ConnectionsFile.Load(path, password);
+                ContainerInfo target;
+                if (asFolder)
+                {
+                    target = new ContainerInfo { Name = Path.GetFileNameWithoutExtension(path) };
+                    _vm.TargetContainerFor(_vm.SelectedNode).AddChild(target);
+                }
+                else target = _vm.Root;
+                foreach (var child in r.Root.Children.ToList()) target.AddChild(child);
+                _vm.MarkDirty();
+                if (asFolder) SelectNode(target);
+                return r.Root.Descendants().Count(n => !n.IsContainer);
             }
             catch (ConnectionsFile.PasswordRequiredException)
             {
-                password = await Dialogs.Dialogs.Password(this, attempt == 0
-                    ? $"The connection file {Path.GetFileName(path)} is protected. Enter the master password:"
-                    : "Wrong password. Try again:", "Master password");
-                if (password is null) return false;
+                password = await Dialogs.Dialogs.Password(this, attempt == 0 ? $"{Path.GetFileName(path)} is protected. Enter its master password:" : "Wrong password. Try again:", "Import");
+                if (password is null) return -1;
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Xml.XmlException or InvalidDataException or EncryptionException)
+            catch (Exception ex) when (ex is IOException or System.Xml.XmlException or InvalidDataException or EncryptionException)
             {
-                Notifications.Instance.Error($"Could not load {path}: {ex.Message}");
-                await Dialogs.Dialogs.Message(this, "Load failed", $"Could not load {Path.GetFileName(path)}", detail: ex.Message);
-                return false;
+                await Dialogs.Dialogs.Message(this, "Import failed", "The file could not be imported.", detail: ex.Message);
+                return -1;
             }
         }
-        return false;
+        return -1;
     }
 
     private void OnClosing(object? sender, WindowClosingEventArgs e)
@@ -284,14 +327,21 @@ public sealed partial class MainWindow : Window
         SaveIfDirty();
         var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
-            Title = "New Connection File", SuggestedFileName = "confCons.xml", DefaultExtension = "xml", FileTypeChoices = [ConnectionFileType]
+            Title = "New Connection Database or File", SuggestedFileName = "connections.db", DefaultExtension = "db", FileTypeChoices = [DatabaseFileType, ConnectionFileType]
         });
         var path = file?.TryGetLocalPath();
         if (path is null) return;
-        _vm.NewFile();
-        _vm.Save(path);
-        _settings.ConnectionsFilePath = path;
-        _settings.Save();
+        if (File.Exists(path)) File.Delete(path); // the picker confirmed the overwrite
+        if (ConnectionStores.IsDatabasePath(path))
+        {
+            if (await OpenStoreAsync(path)) _vm.Save("Created");
+        }
+        else
+        {
+            var store = XmlConnectionStore.CreateNew(path);
+            store.Save(new RootNodeInfo());
+            await OpenStoreAsync(path);
+        }
         FocusTree();
     }
 
@@ -301,12 +351,12 @@ public sealed partial class MainWindow : Window
     {
         var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "Open Connection File", AllowMultiple = false, FileTypeFilter = [ConnectionFileType, FilePickerFileTypes.All]
+            Title = "Open Connection Database or File", AllowMultiple = false, FileTypeFilter = [DatabaseFileType, ConnectionFileType, FilePickerFileTypes.All]
         });
         var path = files.Count > 0 ? files[0].TryGetLocalPath() : null;
         if (path is null) return;
         SaveIfDirty();
-        await LoadFileWithPromptAsync(path);
+        await OpenStoreAsync(path);
         FocusTree();
     }
 
@@ -332,26 +382,52 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void OnSaveFileAs(object? sender, RoutedEventArgs e) => AsyncHelper.Fire(SaveFileAsAsync, "Save as");
+    private void OnExportFile(object? sender, RoutedEventArgs e) => AsyncHelper.Fire(ExportFileAsync, "Export");
 
-    private async Task SaveFileAsAsync()
+    /// <summary>Writes an mRemoteNG confCons.xml copy; the current store stays current.</summary>
+    private async Task ExportFileAsync()
     {
         var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
-            Title = "Save Connection File As", SuggestedFileName = Path.GetFileName(_vm.FilePath ?? "confCons.xml"), DefaultExtension = "xml", FileTypeChoices = [ConnectionFileType]
+            Title = "Export to mRemoteNG File", SuggestedFileName = "confCons.xml", DefaultExtension = "xml", FileTypeChoices = [ConnectionFileType]
         });
         var path = file?.TryGetLocalPath();
         if (path is null) return;
         try
         {
-            _vm.Save(path);
-            _settings.ConnectionsFilePath = path;
-            _settings.Save();
-            Notifications.Instance.Info($"Saved {path}");
+            _vm.ExportXml(path);
+            Notifications.Instance.Info($"Exported {_vm.Root.Descendants().Count(n => !n.IsContainer)} connections to {path}");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            await Dialogs.Dialogs.Message(this, "Save failed", "The connection file could not be saved.", detail: ex.Message);
+            await Dialogs.Dialogs.Message(this, "Export failed", "The file could not be written.", detail: ex.Message);
+        }
+    }
+
+    private void OnHistory(object? sender, RoutedEventArgs e) => AsyncHelper.Fire(HistoryAsync, "History");
+
+    private async Task HistoryAsync()
+    {
+        if (_vm.Store is not { SupportsHistory: true } store)
+        {
+            await Dialogs.Dialogs.Message(this, "History", "History is kept for the connection database only. mRemoteNG XML files have no revisions.");
+            return;
+        }
+        SaveIfDirty();
+        var id = await HistoryDialog.Show(this, store);
+        if (id is null) return;
+        var r = await Dialogs.Dialogs.Message(this, "Restore revision", "Replace the current connections with this revision?", Dialogs.Dialogs.MsgButtons.YesNo,
+            "The current state is kept in the history, so you can come back to it.");
+        if (r != Dialogs.Dialogs.MsgResult.Yes) return;
+        try
+        {
+            _vm.RestoreRevision(id.Value);
+            Notifications.Instance.Info($"Restored revision {id} from {store.DisplayName}.");
+            FocusTree();
+        }
+        catch (Exception ex) when (ex is KeyNotFoundException or InvalidDataException or Microsoft.Data.Sqlite.SqliteException)
+        {
+            await Dialogs.Dialogs.Message(this, "Restore failed", "The revision could not be restored.", detail: ex.Message);
         }
     }
 
@@ -359,9 +435,25 @@ public sealed partial class MainWindow : Window
 
     private async Task SetMasterPasswordAsync()
     {
-        var pw = await Dialogs.Dialogs.Password(this, "Set a master password for the connection file. Leave empty to remove the password (mRemoteNG default encryption).", "Master password", confirm: true);
-        if (pw is null) return;
-        _vm.Root.MasterPassword = string.IsNullOrEmpty(pw) ? null : pw;
+        if (_vm.Store is SqliteConnectionStore db)
+        {
+            var pw = await Dialogs.Dialogs.Password(this, "Set a master password for the connection database. Leave empty to protect it with a key in your login keychain instead (no prompt at start).", "Master password", confirm: true);
+            if (pw is null) return;
+            try
+            {
+                SaveIfDirty();
+                ConnectionStores.SetMasterPassword(db, pw);
+                Notifications.Instance.Info(db.HasMasterPassword ? "Master password set: it is asked for at start." : "Master password removed: the database key is in your keychain.");
+            }
+            catch (Exception ex) when (ex is Keychain.KeychainException or Microsoft.Data.Sqlite.SqliteException)
+            {
+                await Dialogs.Dialogs.Message(this, "Master password", "The database key could not be changed.", detail: ex.Message);
+            }
+            return;
+        }
+        var xmlPw = await Dialogs.Dialogs.Password(this, "Set a master password for the connection file. Leave empty to remove the password (mRemoteNG default encryption).", "Master password", confirm: true);
+        if (xmlPw is null) return;
+        _vm.Root.MasterPassword = string.IsNullOrEmpty(xmlPw) ? null : xmlPw;
         _vm.MarkDirty();
         await SaveFileAsync();
         Notifications.Instance.Info(_vm.Root.IsProtected ? "Master password set." : "Master password removed.");
@@ -383,7 +475,7 @@ public sealed partial class MainWindow : Window
 
     private void OnOpenFileFolder(object? sender, RoutedEventArgs e)
     {
-        var dir = Path.GetDirectoryName(_vm.FilePath ?? AppSettings.DefaultConnectionsPath);
+        var dir = Path.GetDirectoryName(_vm.FilePath ?? AppSettings.DefaultDatabasePath);
         if (dir is not null && Directory.Exists(dir)) Process.Start(new ProcessStartInfo("open", dir) { UseShellExecute = false });
     }
 
@@ -394,32 +486,10 @@ public sealed partial class MainWindow : Window
         var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions { Title = "Import connections from file", AllowMultiple = false, FileTypeFilter = [ConnectionFileType, FilePickerFileTypes.All] });
         var path = files.Count > 0 ? files[0].TryGetLocalPath() : null;
         if (path is null) return;
-        string? password = null;
-        for (var attempt = 0; attempt < 3; attempt++)
-        {
-            try
-            {
-                var r = ConnectionsFile.Load(path, password);
-                var folder = new ContainerInfo { Name = Path.GetFileNameWithoutExtension(path) };
-                foreach (var child in r.Root.Children.ToList()) folder.AddChild(child);
-                _vm.TargetContainerFor(_vm.SelectedNode).AddChild(folder);
-                _vm.MarkDirty();
-                ScheduleAutoSave();
-                SelectNode(folder);
-                Notifications.Instance.Info($"Imported {folder.Descendants().Count(n => !n.IsContainer)} connections from {path}");
-                return;
-            }
-            catch (ConnectionsFile.PasswordRequiredException)
-            {
-                password = await Dialogs.Dialogs.Password(this, "The imported file is protected. Enter its master password:", "Import");
-                if (password is null) return;
-            }
-            catch (Exception ex) when (ex is IOException or System.Xml.XmlException or InvalidDataException or EncryptionException)
-            {
-                await Dialogs.Dialogs.Message(this, "Import failed", "The file could not be imported.", detail: ex.Message);
-                return;
-            }
-        }
+        var count = await ImportIntoCurrentAsync(path, asFolder: true);
+        if (count < 0) return;
+        ScheduleAutoSave();
+        Notifications.Instance.Info($"Imported {count} connections from {path}");
     }
 
     private void ScheduleAutoSave()

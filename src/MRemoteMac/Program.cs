@@ -8,6 +8,7 @@ internal static class Program
     public static void Main(string[] args)
     {
         Services.CrashLog.Install();
+        SQLitePCL.Batteries_V2.Init(); // SQLCipher provider for the connection database
         try { BuildAvaloniaApp().StartWithClassicDesktopLifetime(args); }
         catch (Exception ex) { Services.CrashLog.Write("Main", ex); throw; }
     }

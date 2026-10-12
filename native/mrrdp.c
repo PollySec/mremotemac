@@ -44,6 +44,7 @@ struct mr_session
 	pthread_mutex_t chan_lock;
 	pthread_mutex_t clip_lock;
 	char* clip_local_text; /* text we announced to the remote side */
+	int clip_ready;        /* MonitorReady handled: format lists may be sent (MS-RDPECLIP 3.1.1.1) */
 	UINT32 remote_text_format; /* format id the remote side offered, 0 if none */
 };
 
@@ -241,14 +242,18 @@ static UINT mr_cliprdr_send_format_list(mr_session* s)
 	pthread_mutex_unlock(&s->chan_lock);
 	if (!clip)
 		return CHANNEL_RC_OK;
+	pthread_mutex_lock(&s->clip_lock);
+	int have = s->clip_local_text != NULL;
+	pthread_mutex_unlock(&s->clip_lock);
+	/* An empty list is valid and expected: it tells the server "nothing to paste from this side". */
 	CLIPRDR_FORMAT formats[2] = { 0 };
 	formats[0].formatId = CF_UNICODETEXT;
 	formats[1].formatId = CF_TEXT;
 	CLIPRDR_FORMAT_LIST list = { 0 };
 	list.common.msgType = CB_FORMAT_LIST;
 	list.common.msgFlags = 0;
-	list.numFormats = 2;
-	list.formats = formats;
+	list.numFormats = have ? 2 : 0;
+	list.formats = have ? formats : NULL;
 	return clip->ClientFormatList(clip, &list);
 }
 
@@ -267,12 +272,13 @@ static UINT mr_cliprdr_monitor_ready(CliprdrClientContext* ctx, const CLIPRDR_MO
 	UINT rc = ctx->ClientCapabilities(ctx, &caps);
 	if (rc != CHANNEL_RC_OK)
 		return rc;
+	/* The initialisation sequence is Monitor Ready -> Client Capabilities -> Client Format List. Windows does not
+	 * consider the channel usable until the format list (possibly empty) has arrived, so always send it here, and
+	 * never before: a format list sent ahead of this point is a protocol violation and kills the channel. */
 	pthread_mutex_lock(&s->clip_lock);
-	int have = s->clip_local_text != NULL;
+	s->clip_ready = 1;
 	pthread_mutex_unlock(&s->clip_lock);
-	if (have)
-		return mr_cliprdr_send_format_list(s);
-	return CHANNEL_RC_OK;
+	return mr_cliprdr_send_format_list(s);
 }
 
 static UINT mr_cliprdr_server_capabilities(CliprdrClientContext* ctx,
@@ -401,9 +407,10 @@ int32_t mr_set_clipboard_text(mr_session* s, const char* utf8)
 	pthread_mutex_lock(&s->clip_lock);
 	free(s->clip_local_text);
 	s->clip_local_text = utf8 ? _strdup(utf8) : NULL;
+	int ready = s->clip_ready;
 	pthread_mutex_unlock(&s->clip_lock);
-	if (!s->cliprdr || !s->connected)
-		return 0;
+	if (!ready || !s->cliprdr || !s->connected)
+		return 0; /* kept; announced when MonitorReady completes */
 	return mr_cliprdr_send_format_list(s) == CHANNEL_RC_OK ? 1 : 0;
 }
 
@@ -469,6 +476,9 @@ static void mr_on_channel_disconnected(void* context, const ChannelDisconnectedE
 		pthread_mutex_lock(&s->chan_lock);
 		s->cliprdr = NULL;
 		pthread_mutex_unlock(&s->chan_lock);
+		pthread_mutex_lock(&s->clip_lock);
+		s->clip_ready = 0; /* a reconnect brings a fresh MonitorReady */
+		pthread_mutex_unlock(&s->clip_lock);
 	}
 	else
 		freerdp_client_OnChannelDisconnectedEventHandler(context, e);

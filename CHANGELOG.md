@@ -3,6 +3,23 @@
 All notable changes to mRemoteMac are documented here. The format follows [Keep a Changelog](https://keepachangelog.com)
 and versions follow [Semantic Versioning](https://semver.org) via git tags (MinVer).
 
+## [1.1.0] – 2026-10-12
+
+### Added
+- **Encrypted connection database with history.** Connections now live in `connections.db` (SQLite, every page
+  encrypted with ChaCha20-Poly1305 via SQLite3 Multiple Ciphers). The data key is wrapped with a key in the login
+  keychain (no prompt at start) or, after File ▸ Set Master Password…, with PBKDF2-HMAC-SHA256 (600 000 rounds).
+  Every save appends a revision with a change summary; File ▸ History… restores any of the last 200. Saves are
+  transactional, so a crash can no longer leave a half-written file. See [docs/storage.md](docs/storage.md).
+- First start imports an existing `confCons.xml` (from 1.0.x or any mRemoteNG) into the database and leaves the XML
+  untouched. File ▸ Import mRemoteNG File… and File ▸ Export to mRemoteNG File… keep the format exchangeable, and an
+  XML file can still be opened directly as the live store for people who share it with mRemoteNG on Windows.
+
+### Fixed
+- Clipboard between Mac and session did not work against Windows hosts: the client must answer the server's
+  Monitor Ready with a format list (even an empty one) before announcing anything, and must never announce before.
+  The shim now follows the MS-RDPECLIP initialisation sequence, and text is announced as soon as the channel is ready.
+
 ## [1.0.1] – 2026-10-12
 
 ### Changed

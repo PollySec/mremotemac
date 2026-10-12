@@ -338,7 +338,9 @@ public sealed class UiTestRunner : IDisposable
         bool ok = what switch
         {
             "notif" => Notifications.Instance.Messages.Any(m => m.Text.Contains(expected, StringComparison.OrdinalIgnoreCase)),
-            "file" => vm.FilePath is not null && File.Exists(vm.FilePath) && File.ReadAllText(vm.FilePath).Contains(expected),
+            "file" => vm.Store is not null && (vm.Store is Config.XmlConnectionStore
+                ? File.Exists(vm.FilePath) && File.ReadAllText(vm.FilePath!).Contains(expected)
+                : Config.ConnectionsFile.SerializeToText(vm.Store.Load()).Contains(expected)),
             "visible" => Find(expected.Split(' ')[0]).IsEffectivelyVisible == bool.Parse(expected.Split(' ')[1]),
             "text" => TextOf(Find(expected.Split(' ')[0])) == expected[(expected.IndexOf(' ') + 1)..],
             "exists" => TryFind(expected),

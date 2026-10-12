@@ -16,14 +16,14 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty] private RootNodeInfo _root = new();
     [ObservableProperty] private ConnectionInfo? _selectedNode;
     [ObservableProperty] private ConnectionTab? _selectedTab;
-    [ObservableProperty] private string? _filePath;
+    [ObservableProperty] private IConnectionStore? _store;
     [ObservableProperty] private bool _isDirty;
     [ObservableProperty] private bool _sortAscending = true;
 
-    public ICryptographyProvider Crypto { get; private set; } = new AeadCryptographyProvider();
-    public bool FullFileEncryption { get; private set; }
+    /// <summary>Path of the current store (database or XML file).</summary>
+    public string? FilePath => Store?.Location;
 
-    public string Title => (IsDirty ? "*" : "") + (FilePath is null ? "mRemoteMac" : $"mRemoteMac - {Path.GetFileName(FilePath)}");
+    public string Title => (IsDirty ? "*" : "") + (Store is null ? "mRemoteMac" : $"mRemoteMac - {Store.DisplayName}");
 
     public MainViewModel(AppSettings settings)
     {
@@ -32,29 +32,30 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     partial void OnIsDirtyChanged(bool value) => OnPropertyChanged(nameof(Title));
-    partial void OnFilePathChanged(string? value) => OnPropertyChanged(nameof(Title));
+    partial void OnStoreChanged(IConnectionStore? value) { OnPropertyChanged(nameof(Title)); OnPropertyChanged(nameof(FilePath)); }
 
-    // ---------------- file ----------------
+    // ---------------- store ----------------
 
-    public void NewFile()
+    /// <summary>Makes <paramref name="store"/> current and shows its tree. The previous store is disposed.</summary>
+    public void UseStore(IConnectionStore store)
     {
-        SetRoot(new RootNodeInfo());
-        FilePath = null;
-        Crypto = new AeadCryptographyProvider();
-        FullFileEncryption = false;
+        var root = store.Load();
+        var old = Store;
+        Store = store;
+        SetRoot(root);
         IsDirty = false;
+        old?.Dispose();
+        Notifications.Info($"Loaded {root.Descendants().Count(n => !n.IsContainer)} connections from {store.Location}");
     }
 
-    /// <summary>Loads a file. Throws ConnectionsFile.PasswordRequiredException when a master password is needed.</summary>
-    public void LoadFile(string path, string? masterPassword)
+    /// <summary>Replaces the tree with a revision from the store's history and records the restore as a new revision.</summary>
+    public void RestoreRevision(long id)
     {
-        var r = ConnectionsFile.Load(path, masterPassword);
-        SetRoot(r.Root);
-        Crypto = r.Crypto;
-        FullFileEncryption = r.FullFileEncryption;
-        FilePath = path;
+        if (Store is null) return;
+        var root = Store.LoadRevision(id);
+        SetRoot(root);
+        Store.Save(root, $"Restored revision {id}");
         IsDirty = false;
-        Notifications.Info($"Loaded {r.Root.Descendants().Count(n => !n.IsContainer)} connections from {path}");
     }
 
     private void SetRoot(RootNodeInfo root)
@@ -65,13 +66,20 @@ public sealed partial class MainViewModel : ObservableObject
         SelectedNode = root;
     }
 
-    public void Save(string? path = null)
+    public void Save(string? summary = null)
     {
-        path ??= FilePath ?? AppSettings.DefaultConnectionsPath;
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        ConnectionsFile.Save(path, Root, Crypto, FullFileEncryption);
-        FilePath = path;
+        if (Store is null) throw new InvalidOperationException("No connection store is open.");
+        Store.Save(Root, summary);
         IsDirty = false;
+    }
+
+    /// <summary>Writes an mRemoteNG confCons.xml copy of the current tree (for sharing with mRemoteNG on Windows).</summary>
+    public void ExportXml(string path)
+    {
+        var crypto = Store is XmlConnectionStore xml ? xml.Crypto : new AeadCryptographyProvider();
+        var fullFile = Store is XmlConnectionStore x2 && x2.FullFileEncryption;
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        ConnectionsFile.Save(path, Root, crypto, fullFile);
     }
 
     public void MarkDirty() => IsDirty = true;

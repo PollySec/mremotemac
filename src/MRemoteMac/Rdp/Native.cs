@@ -46,6 +46,11 @@ internal static unsafe partial class Native
     [LibraryImport(Lib)] public static partial void mr_send_focus_in(IntPtr s, ushort toggleFlags);
     [LibraryImport(Lib)] public static partial int mr_resize_desktop(IntPtr s, uint width, uint height);
     [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)] public static partial int mr_set_clipboard_text(IntPtr s, string? utf8);
+    // macOS Keychain (generic password items); status 0 = success, -25300 = not found, -128 = user cancelled
+    [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)] public static partial int mr_keychain_get(string service, string account, out IntPtr data, out int len);
+    [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)] public static partial int mr_keychain_set(string service, string account, ReadOnlySpan<byte> data, int len, string label);
+    [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)] public static partial int mr_keychain_delete(string service, string account);
+    [LibraryImport(Lib)] public static partial void mr_keychain_free(IntPtr data);
     /// <summary>NSPasteboard.generalPasteboard.changeCount, or -1 when unavailable; cheap enough to poll.</summary>
     [LibraryImport(Lib)] public static partial long mr_pasteboard_change_count();
 
