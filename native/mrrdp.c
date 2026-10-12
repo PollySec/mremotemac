@@ -22,6 +22,8 @@
 #include <freerdp/client/cmdline.h>
 #include <freerdp/client/disp.h>
 #include <freerdp/channels/disp.h>
+#include <stdarg.h>
+#include <stdio.h>
 #include <freerdp/client/cliprdr.h>
 #include <winpr/clipboard.h>
 #include <mach/mach_time.h>
@@ -233,6 +235,20 @@ static BOOL mr_pointer_set_position(rdpContext* context, UINT32 x, UINT32 y)
 	return TRUE;
 }
 
+/* ---------- diagnostics ---------- */
+
+static void mr_logf(mr_session* s, const char* fmt, ...)
+{
+	if (!s || !s->cb.on_log)
+		return;
+	char buf[512];
+	va_list ap;
+	va_start(ap, fmt);
+	vsnprintf(buf, sizeof(buf), fmt, ap);
+	va_end(ap);
+	s->cb.on_log(s->cb.user, buf);
+}
+
 /* ---------- clipboard (text only) ---------- */
 
 static UINT mr_cliprdr_send_format_list(mr_session* s)
@@ -254,7 +270,9 @@ static UINT mr_cliprdr_send_format_list(mr_session* s)
 	list.common.msgFlags = 0;
 	list.numFormats = have ? 2 : 0;
 	list.formats = have ? formats : NULL;
-	return clip->ClientFormatList(clip, &list);
+	UINT rc = clip->ClientFormatList(clip, &list);
+	mr_logf(s, "Clipboard: announced %s to the session (rc=%u)", have ? "text" : "nothing", (unsigned)rc);
+	return rc;
 }
 
 static UINT mr_cliprdr_monitor_ready(CliprdrClientContext* ctx, const CLIPRDR_MONITOR_READY* ready)
@@ -270,6 +288,7 @@ static UINT mr_cliprdr_monitor_ready(CliprdrClientContext* ctx, const CLIPRDR_MO
 	gen.version = CB_CAPS_VERSION_2;
 	gen.generalFlags = CB_USE_LONG_FORMAT_NAMES;
 	UINT rc = ctx->ClientCapabilities(ctx, &caps);
+	mr_logf(s, "Clipboard: channel ready, capabilities sent (rc=%u)", (unsigned)rc);
 	if (rc != CHANNEL_RC_OK)
 		return rc;
 	/* The initialisation sequence is Monitor Ready -> Client Capabilities -> Client Format List. Windows does not
@@ -284,8 +303,8 @@ static UINT mr_cliprdr_monitor_ready(CliprdrClientContext* ctx, const CLIPRDR_MO
 static UINT mr_cliprdr_server_capabilities(CliprdrClientContext* ctx,
                                            const CLIPRDR_CAPABILITIES* caps)
 {
-	(void)ctx;
-	(void)caps;
+	mr_session* s = (mr_session*)ctx->custom;
+	mr_logf(s, "Clipboard: server capabilities received (%u sets)", (unsigned)caps->cCapabilitiesSets);
 	return CHANNEL_RC_OK;
 }
 
@@ -306,6 +325,8 @@ static UINT mr_cliprdr_server_format_list(CliprdrClientContext* ctx,
 			want = id;
 	}
 	s->remote_text_format = want;
+	mr_logf(s, "Clipboard: session offers %u format(s), text format %s", (unsigned)list->numFormats,
+	        want == CF_UNICODETEXT ? "unicode" : want == CF_TEXT ? "ansi" : "none");
 
 	CLIPRDR_FORMAT_LIST_RESPONSE resp = { 0 };
 	resp.common.msgType = CB_FORMAT_LIST_RESPONSE;
@@ -368,6 +389,7 @@ static UINT mr_cliprdr_server_format_data_request(CliprdrClientContext* ctx,
 	resp.common.dataLen = len;
 	resp.requestedFormatData = data;
 	UINT rc = ctx->ClientFormatDataResponse(ctx, &resp);
+	mr_logf(s, "Clipboard: session asked for format %u, sent %u bytes (rc=%u)", (unsigned)req->requestedFormatId, (unsigned)len, (unsigned)rc);
 	free(data);
 	return rc;
 }
@@ -376,6 +398,8 @@ static UINT mr_cliprdr_server_format_data_response(CliprdrClientContext* ctx,
                                                    const CLIPRDR_FORMAT_DATA_RESPONSE* resp)
 {
 	mr_session* s = (mr_session*)ctx->custom;
+	mr_logf(s, "Clipboard: data from session, %u bytes, %s", (unsigned)resp->common.dataLen,
+	        (resp->common.msgFlags & CB_RESPONSE_OK) ? "ok" : "refused");
 	if (!(resp->common.msgFlags & CB_RESPONSE_OK) || !resp->requestedFormatData ||
 	    resp->common.dataLen == 0 || !s->cb.on_clipboard_text)
 		return CHANNEL_RC_OK;
@@ -410,7 +434,10 @@ int32_t mr_set_clipboard_text(mr_session* s, const char* utf8)
 	int ready = s->clip_ready;
 	pthread_mutex_unlock(&s->clip_lock);
 	if (!ready || !s->cliprdr || !s->connected)
+	{
+		mr_logf(s, "Clipboard: local text kept until the channel is ready (ready=%d channel=%d connected=%d)", ready, s->cliprdr != NULL, s->connected);
 		return 0; /* kept; announced when MonitorReady completes */
+	}
 	return mr_cliprdr_send_format_list(s) == CHANNEL_RC_OK ? 1 : 0;
 }
 
@@ -454,6 +481,7 @@ static void mr_on_channel_connected(void* context, const ChannelConnectedEventAr
 		pthread_mutex_lock(&s->chan_lock);
 		s->cliprdr = c;
 		pthread_mutex_unlock(&s->chan_lock);
+		mr_logf(s, "Clipboard: channel connected");
 	}
 	else
 	{
@@ -479,6 +507,7 @@ static void mr_on_channel_disconnected(void* context, const ChannelDisconnectedE
 		pthread_mutex_lock(&s->clip_lock);
 		s->clip_ready = 0; /* a reconnect brings a fresh MonitorReady */
 		pthread_mutex_unlock(&s->clip_lock);
+		mr_logf(s, "Clipboard: channel disconnected");
 	}
 	else
 		freerdp_client_OnChannelDisconnectedEventHandler(context, e);

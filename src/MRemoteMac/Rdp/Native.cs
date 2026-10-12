@@ -24,6 +24,7 @@ internal static unsafe partial class Native
         public IntPtr on_pointer_hidden;
         public IntPtr on_clipboard_text;
         public IntPtr on_reconnecting;
+        public IntPtr on_log;
     }
 
     [LibraryImport(Lib)] public static partial IntPtr mr_version();

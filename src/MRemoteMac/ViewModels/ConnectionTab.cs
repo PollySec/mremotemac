@@ -182,6 +182,7 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
             Notifications.Instance.Warn($"{Info.Name}: connection lost, reconnecting.");
         });
         session.ClipboardTextReceived += text => Dispatcher.UIThread.Post(() => AsyncHelper.Fire(() => SetLocalClipboardAsync(text), "Clipboard"));
+        session.Diagnostic += text => Dispatcher.UIThread.Post(() => Notifications.Instance.Info($"{Info.Name}: {text}"));
 
         SetState(TabState.Connecting, $"Connecting to {Info.Name}...");
 
@@ -215,6 +216,7 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
         _lastLocalClipboard = text;
         await clip.SetTextAsync(text).ConfigureAwait(true);
         _lastPasteboardChange = Native.mr_pasteboard_change_count(); // our own write must not be pushed back
+        Notifications.Instance.Info($"{Info.Name}: Clipboard: {text.Length} characters from the session are on the Mac clipboard");
     }
 
     /// <summary>Colors for "Connection Frame Color"; the same hues the status palette uses so they fit both themes.</summary>
@@ -265,11 +267,11 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
         var clip = TopLevel.GetTopLevel(View)?.Clipboard;
         if (clip is null) return;
         var text = await clip.TryGetTextAsync().ConfigureAwait(true);
-        if (!string.IsNullOrEmpty(text) && text != _lastLocalClipboard)
-        {
-            _lastLocalClipboard = text;
-            Session.SetClipboardText(text);
-        }
+        if (string.IsNullOrEmpty(text)) { Notifications.Instance.Info($"{Info.Name}: Clipboard: Mac clipboard has no text"); return; }
+        if (text == _lastLocalClipboard) return;
+        _lastLocalClipboard = text;
+        var sent = Session.SetClipboardText(text);
+        Notifications.Instance.Info($"{Info.Name}: Clipboard: {text.Length} characters from the Mac {(sent ? "announced to the session" : "kept until the channel is ready")}");
     }
 
     public void SendCtrlAltDel() => Session?.SendKeyCombination(ScanCodes.LeftControl, ScanCodes.LeftAlt, ScanCodes.Delete);

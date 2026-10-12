@@ -16,6 +16,8 @@ typedef struct mr_session mr_session;
 
 /* Dirty rectangle in the framebuffer has been updated. */
 typedef void (*mr_on_frame)(void* user, int32_t x, int32_t y, int32_t w, int32_t h);
+/* diagnostic text (clipboard channel events), UTF-8, valid only during the call */
+typedef void (*mr_on_log)(void* user, const char* message);
 /* All dirty rectangles of one paint batch have been delivered; show the frame. */
 typedef void (*mr_on_present)(void* user);
 /* Framebuffer has been (re)allocated to a new size. */
@@ -60,6 +62,7 @@ typedef struct {
 	mr_on_pointer_hidden on_pointer_hidden;
 	mr_on_clipboard_text on_clipboard_text;
 	mr_on_reconnecting on_reconnecting;
+	mr_on_log on_log;
 } mr_callbacks;
 
 MRRDP_API const char* mr_version(void);
