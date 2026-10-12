@@ -62,6 +62,8 @@ struct mr_session
 	UINT32 remote_caps_flags;
 	wClipboard* clip_sys;             /* winpr clipboard: synthesizes FileGroupDescriptorW from text/uri-list */
 	CliprdrFileContext* clip_file;    /* FreeRDP helper that serves our local files to the server */
+	pcCliprdrServerLockClipboardData file_lock;             /* clip_file's handlers, wrapped for logging */
+	pcCliprdrServerFileContentsRequest file_contents_request;
 	FILEDESCRIPTORW* remote_files;    /* what the server last offered (owned) */
 	UINT32 remote_file_count;
 	UINT32 stream_counter, clip_data_counter;
@@ -747,6 +749,49 @@ static UINT mr_cliprdr_server_format_list_response(CliprdrClientContext* ctx,
 	return CHANNEL_RC_OK;
 }
 
+/*
+ * Hand our local file list to FreeRDP's file context so it can serve File Contents Requests. The context keeps one
+ * stream per clipDataId and files it under the id of the *latest* Lock Clipboard Data PDU; Windows locks with a fresh
+ * id for every paste, and a Lock PDU for an unknown id creates an empty stream. The list must therefore be attached
+ * (again) after each lock and when the descriptor is requested, exactly like xfreerdp does, never at copy time. The
+ * context also ignores a list identical to the last one, so the content hash is reset first.
+ */
+static void clip_attach_local_files(mr_session* s)
+{
+	pthread_mutex_lock(&s->clip_lock);
+	char* uris = s->clip_local_files ? _strdup(s->clip_local_files) : NULL;
+	pthread_mutex_unlock(&s->clip_lock);
+	if (!uris)
+		return;
+	(void)cliprdr_file_context_clear(s->clip_file);
+	if (!cliprdr_file_context_update_client_data(s->clip_file, uris, strlen(uris)))
+		mr_logf(s, "Clipboard: could not attach the local file list for the session");
+	free(uris);
+}
+
+static UINT mr_cliprdr_server_lock(CliprdrClientContext* ctx, const CLIPRDR_LOCK_CLIPBOARD_DATA* lock)
+{
+	mr_session* s = clip_session(ctx);
+	UINT rc = s->file_lock ? s->file_lock(ctx, lock) : CHANNEL_RC_OK;
+	clip_attach_local_files(s);
+	mr_logf(s, "Clipboard: session locked our file list (id %u)", (unsigned)lock->clipDataId);
+	return rc;
+}
+
+static UINT mr_cliprdr_server_file_contents_request(CliprdrClientContext* ctx,
+                                                    const CLIPRDR_FILE_CONTENTS_REQUEST* req)
+{
+	mr_session* s = clip_session(ctx);
+	const uint64_t pos = ((uint64_t)req->nPositionHigh << 32) | req->nPositionLow;
+	if (req->dwFlags & FILECONTENTS_SIZE)
+		mr_logf(s, "Clipboard: session asks for the size of file #%u (lock id %u)", (unsigned)req->listIndex,
+		        req->haveClipDataId ? (unsigned)req->clipDataId : 0u);
+	else if (pos == 0)
+		mr_logf(s, "Clipboard: session starts reading file #%u (%u bytes per request)", (unsigned)req->listIndex,
+		        (unsigned)req->cbRequested);
+	return s->file_contents_request ? s->file_contents_request(ctx, req) : CHANNEL_RC_OK;
+}
+
 static UINT mr_cliprdr_server_format_data_request(CliprdrClientContext* ctx,
                                                   const CLIPRDR_FORMAT_DATA_REQUEST* req)
 {
@@ -756,6 +801,8 @@ static UINT mr_cliprdr_server_format_data_request(CliprdrClientContext* ctx,
 	BYTE* data = NULL;
 	UINT32 len = 0;
 	const UINT32 fgd_id = ClipboardGetFormatId(s->clip_sys, type_FileGroupDescriptorW);
+	if (req->requestedFormatId == fgd_id)
+		clip_attach_local_files(s); /* the descriptor is about to be used: make sure the current lock id serves it */
 
 	pthread_mutex_lock(&s->clip_lock);
 	if (req->requestedFormatId == fgd_id && s->clip_local_files)
@@ -983,8 +1030,9 @@ int32_t mr_set_clipboard_files(mr_session* s, const char* paths_newline_separate
 	free(s->clip_local_text);
 	s->clip_local_text = NULL;
 	pthread_mutex_unlock(&s->clip_lock);
-	if (uris)
-		(void)cliprdr_file_context_update_client_data(s->clip_file, uris, strlen(uris));
+	if (!uris)
+		(void)cliprdr_file_context_clear(s->clip_file);
+	/* the list itself is attached when the session locks or requests it (see clip_attach_local_files) */
 	return clip_announce(s);
 }
 
@@ -1019,6 +1067,10 @@ static void mr_on_channel_connected(void* context, const ChannelConnectedEventAr
 	{
 		CliprdrClientContext* c = (CliprdrClientContext*)e->pInterface;
 		(void)cliprdr_file_context_init(s->clip_file, c); /* sets c->custom and serves our local files */
+		s->file_lock = c->ServerLockClipboardData;
+		s->file_contents_request = c->ServerFileContentsRequest;
+		c->ServerLockClipboardData = mr_cliprdr_server_lock;
+		c->ServerFileContentsRequest = mr_cliprdr_server_file_contents_request;
 		c->ServerFileContentsResponse = mr_cliprdr_server_file_contents_response;
 		c->MonitorReady = mr_cliprdr_monitor_ready;
 		c->ServerCapabilities = mr_cliprdr_server_capabilities;
