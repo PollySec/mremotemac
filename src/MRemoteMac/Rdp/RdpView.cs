@@ -43,6 +43,12 @@ public sealed class RdpView : Control, IRdpFrameTarget
     /// <summary>Frames presented so far (diagnostics).</summary>
     public long FrameCount => Interlocked.Read(ref _frames);
 
+    /// <summary>True once the current session has presented at least one frame (UI thread).</summary>
+    public bool HasFrame { get; private set; }
+
+    /// <summary>Raised on the UI thread when the current session presents its first frame.</summary>
+    public event Action? FirstFrame;
+
     public RdpSession? Session
     {
         get => _session;
@@ -50,6 +56,7 @@ public sealed class RdpView : Control, IRdpFrameTarget
         {
             if (_session is not null) Detach(_session);
             _session = value;
+            HasFrame = false;
             if (_session is not null) Attach(_session);
             InvalidateVisual();
         }
@@ -127,7 +134,18 @@ public sealed class RdpView : Control, IRdpFrameTarget
     {
         Interlocked.Increment(ref _frames);
         if (Interlocked.Exchange(ref _presentPending, 1) == 0)
-            Dispatcher.UIThread.Post(() => { Interlocked.Exchange(ref _presentPending, 0); InvalidateVisual(); }, DispatcherPriority.Render);
+            Dispatcher.UIThread.Post(OnPresentUi, DispatcherPriority.Render);
+    }
+
+    private void OnPresentUi()
+    {
+        Interlocked.Exchange(ref _presentPending, 0);
+        InvalidateVisual();
+        if (!HasFrame)
+        {
+            HasFrame = true;
+            FirstFrame?.Invoke();
+        }
     }
 
     private void OnDisconnected(uint err, string text) => Dispatcher.UIThread.Post(() => { Cursor = Cursor.Default; InvalidateVisual(); });

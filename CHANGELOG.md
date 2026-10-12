@@ -13,7 +13,8 @@ and versions follow [Semantic Versioning](https://semver.org) via git tags (MinV
 
 ### Added
 - Analogue TV static behind the "Connecting…" overlay while a session is being established (Options ▸ Appearance
-  to turn it off). Rendered into a small bitmap at 25 fps only while visible, so idle tabs cost nothing.
+  to turn it off). Rendered into a small bitmap at 25 fps only while visible, so idle tabs cost nothing. The overlay
+  stays up until the server has drawn its first frame, so there is no black panel between handshake and desktop.
 
 ### Changed
 - The Protocol field offers RDP only. Connections imported with another protocol (SSH, VNC, …) stay in the file,

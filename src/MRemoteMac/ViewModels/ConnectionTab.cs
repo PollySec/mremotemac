@@ -75,6 +75,7 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
         };
         Content = new Panel { Children = { View, _noise, _overlay } };
         View.GotFocus += (_, _) => AsyncHelper.Fire(PushLocalClipboardAsync, "Clipboard");
+        View.FirstFrame += () => { if (State == TabState.Connected) SetState(TabState.Connected, ""); }; // lifts the overlay
     }
 
     private ViewScaleMode DefaultScaleMode()
@@ -96,9 +97,12 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
     {
         State = state;
         StatusText = text;
-        _overlayText.Text = text;
-        _overlay.IsVisible = state != TabState.Connected;
-        _noise.IsVisible = state == TabState.Connecting && _settings.StaticWhileConnecting;
+        // "Connected" arrives before the server has drawn anything; keep the overlay (and the static) up until the
+        // first frame so the user never sees a black panel between the handshake and the desktop.
+        var waitingForDesktop = state == TabState.Connected && !View.HasFrame;
+        _overlayText.Text = waitingForDesktop ? $"Connecting to {Info.Name}..." : text;
+        _overlay.IsVisible = state != TabState.Connected || waitingForDesktop;
+        _noise.IsVisible = (state == TabState.Connecting || waitingForDesktop) && _settings.StaticWhileConnecting;
         _overlay.Background = OverlayBrush(_noise.IsVisible ? TabState.Connecting : TabState.Idle);
         _reconnectButton.IsVisible = state is TabState.Disconnected or TabState.Failed;
         StateChanged?.Invoke(this);
