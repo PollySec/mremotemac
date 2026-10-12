@@ -3,7 +3,7 @@
 All notable changes to mRemoteMac are documented here. The format follows [Keep a Changelog](https://keepachangelog.com)
 and versions follow [Semantic Versioning](https://semver.org) via git tags (MinVer).
 
-## [Unreleased]
+## [1.3.0] – 2026-10-12
 
 ### Added
 - **Drag and drop in the connection tree.** Press on a connection or folder and drag: a chip with its icon and name
