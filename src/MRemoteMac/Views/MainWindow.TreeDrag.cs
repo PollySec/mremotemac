@@ -86,7 +86,10 @@ public sealed partial class MainWindow
         e.Handled = true;
         if (node is null || target is null) return;
         if (!_vm.MoveTo(node, target.Value.Parent, target.Value.Index)) return;
-        SelectNode(node);
+        // the TreeView may re-select a neighbour while it tears down the node's old container; settle on the moved
+        // node after that has happened (same pattern as delete)
+        _vm.SelectedNode = node;
+        Dispatcher.UIThread.Post(() => { _vm.SelectedNode = node; FocusTree(); }, DispatcherPriority.Background);
         ScheduleAutoSave();
         Services.Notifications.Instance.Info($"Moved {node.Name} to {(target.Value.Parent is RootNodeInfo ? "the top level" : target.Value.Parent.Name)}");
     }
