@@ -157,6 +157,7 @@ public sealed partial class SqliteConnectionStore : IConnectionStore
             var pos = 0;
             foreach (var n in parent.Children)
             {
+                // duplicate ids (the same file imported twice) get a fresh id; the history then shows the node as added
                 if (string.IsNullOrEmpty(n.ConstantId) || !seen.Add(n.ConstantId)) { n.ConstantId = Guid.NewGuid().ToString(); seen.Add(n.ConstantId); }
                 list.Add(new NodeRecord
                 {
@@ -263,6 +264,8 @@ public sealed partial class SqliteConnectionStore : IConnectionStore
             }
             Exec(_db, $"DELETE FROM revisions WHERE id NOT IN (SELECT id FROM revisions ORDER BY id DESC LIMIT {MaxRevisions})", tx);
             tx.Commit();
+            // fold the WAL into the main file so that copying connections.db alone is always complete (cheap at this size)
+            Exec(_db, "PRAGMA wal_checkpoint(TRUNCATE)");
         }
     }
 

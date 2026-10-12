@@ -28,6 +28,7 @@ public sealed class XmlConnectionStore : IConnectionStore
 
     public RootNodeInfo Load()
     {
+        if (_root is not null) return _root; // the opener validated the password already; the file is read once
         if (!File.Exists(Location)) return _root ??= new RootNodeInfo();
         var r = ConnectionsFile.Load(Location, _masterPassword);
         Crypto = r.Crypto;

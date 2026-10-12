@@ -23,7 +23,7 @@ public sealed class SqliteStoreTests : IDisposable
         dc.Inheritance.Add(nameof(ConnectionInfo.Colors));
         folder.AddChild(dc);
         folder.AddChild(new ConnectionInfo { Name = "FS01", Hostname = "fs01.lab", RdGatewayHostname = "gw.lab", RdGatewayPassword = "gwpw" });
-        root.AddChild(new ConnectionInfo { Name = "Standalone", Hostname = "10.0.0.5", Port = 3390, UnknownAttributes = { ["VNCCompression"] = "CompLow" } });
+        root.AddChild(new ConnectionInfo { Name = "Standalone", Hostname = "10.0.0.5", Port = 3390, UnknownAttributes = { ["VNCCompression"] = "CompLow", ["VNCProxyPassword"] = "proxy-secret" } });
         return root;
     }
 
@@ -48,6 +48,10 @@ public sealed class SqliteStoreTests : IDisposable
         Assert.True(dc.Inherits(nameof(ConnectionInfo.Colors)) || dc.Inheritance.Contains(nameof(ConnectionInfo.Colors)));
         Assert.Equal("CompLow", root.Descendants().First(n => n.Name == "Standalone").UnknownAttributes["VNCCompression"]);
         Assert.Equal("gwpw", root.Descendants().First(n => n.Name == "FS01").RdGatewayPassword);
+        // unknown secret attributes are kept decrypted in the vault and re-encrypted with the export key
+        Assert.Equal("proxy-secret", root.Descendants().First(n => n.Name == "Standalone").UnknownAttributes["VNCProxyPassword"]);
+        var reimported = ConnectionsFile.LoadFromText(actual, null).Root;
+        Assert.Equal("proxy-secret", reimported.Descendants().First(n => n.Name == "Standalone").UnknownAttributes["VNCProxyPassword"]);
     }
 
     private static string Mask(string xml) => System.Text.RegularExpressions.Regex.Replace(xml, "(Password|RDGatewayPassword|RDGatewayAccessToken|Protected)=\"[^\"]*\"", "$1=\"*\"");

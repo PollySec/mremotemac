@@ -171,7 +171,7 @@ public static class ConnectionsFile
             if (props.TryGetValue(name, out var prop))
                 SetFromString(node, prop, value);
             else
-                node.UnknownAttributes[a.Key] = a.Value;
+                node.UnknownAttributes[a.Key] = value; // secrets are kept decrypted and re-encrypted on write
         }
 
     }
@@ -345,7 +345,7 @@ public static class ConnectionsFile
         A("VNCProxyIP", Unk("VNCProxyIP", ""));
         A("VNCProxyPort", Unk("VNCProxyPort", "0"));
         A("VNCProxyUsername", Unk("VNCProxyUsername", ""));
-        A("VNCProxyPassword", Unk("VNCProxyPassword", ""));
+        A("VNCProxyPassword", Enc(Unk("VNCProxyPassword", "")));
         A("VNCColors", Unk("VNCColors", "ColNormal"));
         A("VNCSmartSizeMode", Unk("VNCSmartSizeMode", "SmartSAspect"));
         A("VNCViewOnly", Unk("VNCViewOnly", "false"));

@@ -23,7 +23,7 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>Path of the current store (database or XML file).</summary>
     public string? FilePath => Store?.Location;
 
-    public string Title => (IsDirty ? "*" : "") + (Store is null ? "mRemoteMac" : $"mRemoteMac - {Store.DisplayName}");
+    public string Title => (IsDirty ? "*" : "") + (Store is null ? "mRemoteMac – no connection store open" : $"mRemoteMac - {Store.DisplayName}");
 
     public MainViewModel(AppSettings settings)
     {
@@ -39,7 +39,9 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>Makes <paramref name="store"/> current and shows its tree. The previous store is disposed.</summary>
     public void UseStore(IConnectionStore store)
     {
-        var root = store.Load();
+        RootNodeInfo root;
+        try { root = store.Load(); }
+        catch { store.Dispose(); throw; }
         var old = Store;
         Store = store;
         SetRoot(root);
@@ -53,9 +55,17 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (Store is null) return;
         var root = Store.LoadRevision(id);
+        Store.Save(root, $"Restored revision {id}"); // persist first; the UI only switches once the restore is on disk
         SetRoot(root);
-        Store.Save(root, $"Restored revision {id}");
         IsDirty = false;
+    }
+
+    /// <summary>Closes the store (checkpoints and zeroes keys). The tree stays visible but can no longer be saved.</summary>
+    public void CloseStore()
+    {
+        var old = Store;
+        Store = null;
+        old?.Dispose();
     }
 
     private void SetRoot(RootNodeInfo root)
@@ -68,18 +78,27 @@ public sealed partial class MainViewModel : ObservableObject
 
     public void Save(string? summary = null)
     {
-        if (Store is null) throw new InvalidOperationException("No connection store is open.");
+        if (Store is null) throw new InvalidOperationException("No connection store is open; use File ▸ Open or New.");
         Store.Save(Root, summary);
         IsDirty = false;
     }
 
-    /// <summary>Writes an mRemoteNG confCons.xml copy of the current tree (for sharing with mRemoteNG on Windows).</summary>
-    public void ExportXml(string path)
+    /// <summary>
+    /// Writes an mRemoteNG confCons.xml copy of the current tree. <paramref name="masterPassword"/> protects the
+    /// passwords in the file; null/empty means mRemoteNG's default key, which anyone with mRemoteNG can read.
+    /// </summary>
+    public void ExportXml(string path, string? masterPassword)
     {
         var crypto = Store is XmlConnectionStore xml ? xml.Crypto : new AeadCryptographyProvider();
         var fullFile = Store is XmlConnectionStore x2 && x2.FullFileEncryption;
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        ConnectionsFile.Save(path, Root, crypto, fullFile);
+        var previous = Root.MasterPassword;
+        Root.MasterPassword = string.IsNullOrEmpty(masterPassword) ? null : masterPassword;
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            ConnectionsFile.Save(path, Root, crypto, fullFile);
+        }
+        finally { Root.MasterPassword = previous; }
     }
 
     public void MarkDirty() => IsDirty = true;

@@ -12,8 +12,11 @@ and versions follow [Semantic Versioning](https://semver.org) via git tags (MinV
   Every save appends a revision with a change summary; File ▸ History… restores any of the last 200. Saves are
   transactional, so a crash can no longer leave a half-written file. See [docs/storage.md](docs/storage.md).
 - First start imports an existing `confCons.xml` (from 1.0.x or any mRemoteNG) into the database and leaves the XML
-  untouched. File ▸ Import mRemoteNG File… and File ▸ Export to mRemoteNG File… keep the format exchangeable, and an
-  XML file can still be opened directly as the live store for people who share it with mRemoteNG on Windows.
+  untouched. File ▸ Import mRemoteNG File… and File ▸ Export to mRemoteNG File… keep the format exchangeable (the
+  export asks for a master password for the file), and an XML file can still be opened directly as the live store for
+  people who share it with mRemoteNG on Windows.
+- Unknown mRemoteNG secret attributes (e.g. `VNCProxyPassword`) are now decrypted on import and re-encrypted on
+  export, so they survive a change of master password.
 
 ### Fixed
 - Clipboard between Mac and session did not work against Windows hosts: the client must answer the server's

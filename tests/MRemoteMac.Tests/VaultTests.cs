@@ -13,9 +13,9 @@ public sealed class VaultTests : IDisposable
     private sealed class MemoryKeyStore : ConnectionStores.IKeyStore
     {
         public readonly Dictionary<string, byte[]> Items = new(StringComparer.Ordinal);
-        public byte[]? Read(string path) => Items.GetValueOrDefault(path);
-        public void Store(string path, byte[] key, string label) => Items[path] = (byte[])key.Clone();
-        public void Remove(string path) => Items.Remove(path);
+        public byte[]? Read(string dbPath, string account) => Items.GetValueOrDefault(account) is { } k ? (byte[])k.Clone() : null; // caller zeroes its copy
+        public void Store(string dbPath, string account, byte[] key, string label) => Items[account] = (byte[])key.Clone();
+        public void Remove(string dbPath, string account) => Items.Remove(account);
     }
 
     static VaultTests() => SQLitePCL.Batteries_V2.Init();
@@ -40,7 +40,8 @@ public sealed class VaultTests : IDisposable
     {
         var dataKey = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);
         var kek = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);
-        var h = VaultHeader.ForKeychain(kek, dataKey);
+        var h = VaultHeader.ForKeychain(kek, dataKey, VaultHeader.NewKeychainAccount());
+        Assert.StartsWith("vault:", h.KeychainAccount);
         Assert.Equal(dataKey, h.UnwrapWithKeychainKey(kek));
         Assert.ThrowsAny<System.Security.Cryptography.CryptographicException>(() => h.UnwrapWithKeychainKey(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32)));
     }
@@ -61,7 +62,7 @@ public sealed class VaultTests : IDisposable
                 Assert.False(store.HasMasterPassword);
                 var root = new RootNodeInfo(); root.AddChild(new ConnectionInfo { Name = "A", Hostname = "a" });
                 store.Save(root);
-                ConnectionStores.SetMasterPassword(store, "hunter2");
+                await ConnectionStores.SetMasterPasswordAsync(store, "hunter2");
                 Assert.True(store.HasMasterPassword);
             }
             Assert.Empty(keys.Items); // keychain key removed in password mode
@@ -75,12 +76,23 @@ public sealed class VaultTests : IDisposable
             {
                 Assert.True(store.HasMasterPassword);
                 Assert.Equal("a", store.Load().Descendants().Single().Hostname);
-                ConnectionStores.SetMasterPassword(store, null); // back to keychain
+                await ConnectionStores.SetMasterPasswordAsync(store, null); // back to keychain
                 Assert.False(store.HasMasterPassword);
             }
             Assert.Single(keys.Items);
             using var again = (SqliteConnectionStore)(await ConnectionStores.OpenAsync(DbPath, NoPrompt))!;
             Assert.Equal("a", again.Load().Descendants().Single().Hostname);
+
+            // the vault survives a move: the header names the keychain item, not the path
+            var moved = Path.Combine(_dir, "renamed.db");
+            again.Dispose();
+            File.Move(DbPath, moved); File.Move(VaultHeader.PathFor(DbPath), VaultHeader.PathFor(moved));
+            var movedHeader = VaultHeader.Read(moved)!;
+            Assert.Equal(VaultHeader.KeychainMode, movedHeader.Mode);
+            Assert.Contains(movedHeader.KeychainAccount, keys.Items.Keys);
+            Assert.NotNull(movedHeader.UnwrapWithKeychainKey(keys.Items[movedHeader.KeychainAccount]));
+            using var afterMove = (SqliteConnectionStore)(await ConnectionStores.OpenAsync(moved, NoPrompt))!;
+            Assert.Equal("a", afterMove.Load().Descendants().Single().Hostname);
         }
         finally { ConnectionStores.Keys = previous; }
     }

@@ -10,6 +10,7 @@ supported for import, export and as an alternative live store.
 | `~/Library/Application Support/mRemoteMac/connections.db` | The vault: SQLite, every page encrypted (SQLite3 Multiple Ciphers, ChaCha20-Poly1305), WAL journal |
 | `connections.db.vault` | Plaintext header: unlock mode, KDF parameters and the **wrapped** data key |
 | login keychain item `com.pollysec.mremotemac` / `vault:<hash>` | Key-encryption key in keychain mode |
+| `connections.db-wal`, `-shm` | SQLite write-ahead log; folded into the main file after every save and at exit |
 | `confCons.xml` (1.0.x) | Left untouched after the one-time import at first start |
 
 ## Keys
@@ -42,7 +43,7 @@ itself becomes a revision, so nothing is lost.
 ```sql
 meta(key TEXT PRIMARY KEY, value TEXT)          -- schema_version, created_at, root_name
 nodes(id TEXT PRIMARY KEY, parent_id TEXT REFERENCES nodes(id) ON DELETE CASCADE,
-      position INTEGER, type TEXT, name TEXT, attributes TEXT /* JSON [{name, value}…] */)
+      position INTEGER, type TEXT, name TEXT, attributes TEXT /* JSON [{"Key":…,"Value":…}…] */)
 revisions(id INTEGER PRIMARY KEY, created_at TEXT, summary TEXT, connections INTEGER, folders INTEGER, snapshot BLOB)
 ```
 
@@ -62,4 +63,17 @@ A file-based keychain item records the designated requirement of the app that cr
 that requirement is the build's cdhash, so **every rebuild counts as a new app** and macOS asks once whether
 mRemoteMac may use the item ("Always Allow" whitelists that build). Release builds signed with a stable identity
 (`CODESIGN_IDENTITY` in `packaging/make-app.sh`) do not have this problem. The scripted UI audit uses a key file
-instead of the keychain so it can run unattended.
+instead of the keychain so it can run unattended; that path is only taken in test mode together with an isolated
+`MRM_HOME` profile, never for the user's real data.
+
+## Upgrading from 1.0.x
+
+1.0.x stored `confCons.xml` and pointed the settings at it. At first start of 1.1 the database does not exist yet, so
+that file is imported into the new database and left in place. Opening an XML file through File ▸ Open after that
+makes it the live store deliberately; the database is not touched.
+
+## Export
+
+File ▸ Export to mRemoteNG File… asks for a master password for the exported file. Leaving it empty writes
+mRemoteNG's default encryption (`mR3m`), which anyone running mRemoteNG can read, so it is only right for files that
+stay on trusted machines.

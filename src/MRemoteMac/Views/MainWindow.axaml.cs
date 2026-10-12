@@ -166,6 +166,7 @@ public sealed partial class MainWindow : Window
 
     public void ForceClose()
     {
+        _vm.CloseStore(); // checkpoint, close the handle, zero the key
         _closing = true;
         Close();
     }
@@ -178,14 +179,25 @@ public sealed partial class MainWindow : Window
     {
         var configured = _settings.ConnectionsFilePath;
         var dbPath = AppSettings.DefaultDatabasePath;
-        if (configured is not null && (File.Exists(configured) || ConnectionStores.IsDatabasePath(configured)))
+        var dbExists = File.Exists(dbPath);
+
+        // A database the user already has (or explicitly chose) wins. An XML path is only honoured as the live store
+        // once a database exists, i.e. when the user picked XML deliberately after the switch; before that it is the
+        // 1.0.x file to migrate.
+        if (configured is not null && ConnectionStores.IsDatabasePath(configured) && File.Exists(configured))
         {
-            if (await OpenStoreAsync(configured)) return;
-            if (ConnectionStores.IsDatabasePath(configured)) { _vm.UseStore(XmlConnectionStore.CreateNew(AppSettings.DefaultConnectionsPath)); return; }
+            if (!await OpenStoreAsync(configured)) NoStore();
+            return;
         }
-        var legacyXml = configured is not null && !ConnectionStores.IsDatabasePath(configured) ? configured : AppSettings.DefaultConnectionsPath;
-        var migrate = !File.Exists(dbPath) && File.Exists(legacyXml);
-        if (!await OpenStoreAsync(dbPath)) { _vm.UseStore(XmlConnectionStore.CreateNew(AppSettings.DefaultConnectionsPath)); return; }
+        if (configured is not null && !ConnectionStores.IsDatabasePath(configured) && File.Exists(configured) && dbExists)
+        {
+            if (!await OpenStoreAsync(configured)) NoStore();
+            return;
+        }
+
+        var legacyXml = configured is not null && !ConnectionStores.IsDatabasePath(configured) && File.Exists(configured) ? configured : AppSettings.DefaultConnectionsPath;
+        var migrate = !dbExists && File.Exists(legacyXml);
+        if (!await OpenStoreAsync(dbPath)) { NoStore(); return; }
         if (migrate)
         {
             var imported = await ImportIntoCurrentAsync(legacyXml, asFolder: false);
@@ -202,6 +214,13 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    /// <summary>Nothing could be opened: keep an empty tree, no autosave, and tell the user how to proceed.</summary>
+    private void NoStore()
+    {
+        _vm.CloseStore();
+        Notifications.Instance.Warn("No connection store is open. Use File ▸ Open Connection Database or File… or File ▸ New Connection Database…; nothing is saved until then.");
+    }
+
     /// <summary>Opens a database or XML store with the right prompts and makes it current. False when cancelled or failed.</summary>
     private async Task<bool> OpenStoreAsync(string path)
     {
@@ -215,14 +234,21 @@ public sealed partial class MainWindow : Window
             _settings.Save();
             return true;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Xml.XmlException or InvalidDataException or EncryptionException
-                                   or InvalidOperationException or Microsoft.Data.Sqlite.SqliteException)
+        catch (Exception ex) when (IsStoreError(ex) || ex is ConnectionsFile.PasswordRequiredException)
         {
             Notifications.Instance.Error($"Could not open {path}: {ex.Message}");
             await Dialogs.Dialogs.Message(this, "Open failed", $"Could not open {Path.GetFileName(path)}", detail: ex.Message);
             return false;
         }
     }
+
+    /// <summary>Everything a store can throw while opening or saving: file system, SQLite, vault, keychain, XML, crypto.</summary>
+    private static bool IsStoreError(Exception ex) => ex is IOException or UnauthorizedAccessException or System.Data.Common.DbException
+        or InvalidDataException or InvalidOperationException or System.Xml.XmlException or EncryptionException
+        or System.Text.Json.JsonException or FormatException or System.Security.Cryptography.CryptographicException
+        or Keychain.KeychainException or SqliteConnectionStore.WrongKeyException or KeyNotFoundException;
+
+    private static bool IsSaveError(Exception ex) => IsStoreError(ex);
 
     /// <summary>Imports an mRemoteNG file into the current tree. Returns the number of connections, or -1 when cancelled/failed.</summary>
     private async Task<int> ImportIntoCurrentAsync(string path, bool asFolder)
@@ -275,14 +301,19 @@ public sealed partial class MainWindow : Window
             var r = await Dialogs.Dialogs.Message(this, "Quit mRemoteMac", $"{open.Count} connection(s) are still open. Quit anyway?", Dialogs.Dialogs.MsgButtons.YesNo);
             if (r != Dialogs.Dialogs.MsgResult.Yes) return;
         }
-        if (_vm.IsDirty)
+        if (_vm.IsDirty && _vm.Store is not null)
         {
             try { _vm.Save(); }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            catch (Exception ex) when (IsSaveError(ex))
             {
-                var r = await Dialogs.Dialogs.Message(this, "Save failed", "Could not save the connection file. Quit anyway?", Dialogs.Dialogs.MsgButtons.YesNo, ex.Message);
+                var r = await Dialogs.Dialogs.Message(this, "Save failed", "Could not save the connections. Quit anyway?", Dialogs.Dialogs.MsgButtons.YesNo, ex.Message);
                 if (r != Dialogs.Dialogs.MsgResult.Yes) return;
             }
+        }
+        else if (_vm.IsDirty)
+        {
+            var r = await Dialogs.Dialogs.Message(this, "Unsaved changes", "No connection store is open, so the changes cannot be saved. Quit anyway?", Dialogs.Dialogs.MsgButtons.YesNo);
+            if (r != Dialogs.Dialogs.MsgResult.Yes) return;
         }
         foreach (var t in _vm.Tabs.ToList())
         {
@@ -339,8 +370,12 @@ public sealed partial class MainWindow : Window
         }
         else
         {
-            var store = XmlConnectionStore.CreateNew(path);
-            store.Save(new RootNodeInfo());
+            try { XmlConnectionStore.CreateNew(path).Save(new RootNodeInfo()); }
+            catch (Exception ex) when (IsStoreError(ex))
+            {
+                await Dialogs.Dialogs.Message(this, "New file failed", "The file could not be created.", detail: ex.Message);
+                return;
+            }
             await OpenStoreAsync(path);
         }
         FocusTree();
@@ -363,9 +398,9 @@ public sealed partial class MainWindow : Window
 
     private void SaveIfDirty()
     {
-        if (!_vm.IsDirty) return;
+        if (!_vm.IsDirty || _vm.Store is null) return;
         try { _vm.Save(); }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Notifications.Instance.Error($"Save failed: {ex.Message}"); }
+        catch (Exception ex) when (IsSaveError(ex)) { Notifications.Instance.Error($"Save failed: {ex.Message}"); }
     }
 
     private void OnSaveFile(object? sender, RoutedEventArgs e) => AsyncHelper.Fire(SaveFileAsync, "Save");
@@ -377,9 +412,9 @@ public sealed partial class MainWindow : Window
             _vm.Save();
             Notifications.Instance.Info($"Saved {_vm.FilePath}");
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (IsSaveError(ex))
         {
-            await Dialogs.Dialogs.Message(this, "Save failed", "The connection file could not be saved.", detail: ex.Message);
+            await Dialogs.Dialogs.Message(this, "Save failed", "The connections could not be saved.", detail: ex.Message);
         }
     }
 
@@ -394,10 +429,13 @@ public sealed partial class MainWindow : Window
         });
         var path = file?.TryGetLocalPath();
         if (path is null) return;
+        var password = await Dialogs.Dialogs.Password(this,
+            "Master password for the exported file. Leave empty for mRemoteNG's default encryption, which anyone with mRemoteNG can read.", "Export", confirm: true);
+        if (password is null) return;
         try
         {
-            _vm.ExportXml(path);
-            Notifications.Instance.Info($"Exported {_vm.Root.Descendants().Count(n => !n.IsContainer)} connections to {path}");
+            _vm.ExportXml(path, password);
+            Notifications.Instance.Info($"Exported {_vm.Root.Descendants().Count(n => !n.IsContainer)} connections to {path}" + (password.Length == 0 ? " (default encryption)" : " (master password set)"));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -426,7 +464,7 @@ public sealed partial class MainWindow : Window
             Notifications.Instance.Info($"Restored revision {id} from {store.DisplayName}.");
             FocusTree();
         }
-        catch (Exception ex) when (ex is KeyNotFoundException or InvalidDataException or Microsoft.Data.Sqlite.SqliteException)
+        catch (Exception ex) when (IsStoreError(ex))
         {
             await Dialogs.Dialogs.Message(this, "Restore failed", "The revision could not be restored.", detail: ex.Message);
         }
@@ -443,10 +481,10 @@ public sealed partial class MainWindow : Window
             try
             {
                 SaveIfDirty();
-                ConnectionStores.SetMasterPassword(db, pw);
+                await ConnectionStores.SetMasterPasswordAsync(db, pw);
                 Notifications.Instance.Info(db.HasMasterPassword ? "Master password set: it is asked for at start." : "Master password removed: the database key is in your keychain.");
             }
-            catch (Exception ex) when (ex is Keychain.KeychainException or Microsoft.Data.Sqlite.SqliteException)
+            catch (Exception ex) when (IsStoreError(ex))
             {
                 await Dialogs.Dialogs.Message(this, "Master password", "The database key could not be changed.", detail: ex.Message);
             }
@@ -502,9 +540,12 @@ public sealed partial class MainWindow : Window
 
     private void AutoSave()
     {
-        if (!_vm.IsDirty || !_settings.AutoSaveOnChange) return;
+        if (!_vm.IsDirty || !_settings.AutoSaveOnChange || _vm.Store is null) return;
+        // a save in the middle of keyboard navigation must not cost the user their focus
+        var focused = FocusManager?.GetFocusedElement() as Control;
         try { _vm.Save(); }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Notifications.Instance.Error($"Auto-save failed: {ex.Message}"); }
+        catch (Exception ex) when (IsSaveError(ex)) { Notifications.Instance.Error($"Auto-save failed: {ex.Message}"); }
+        if (focused is not null && FocusManager?.GetFocusedElement() is null && focused.IsEffectivelyVisible) focused.Focus();
     }
 
     // ------------------------------------------------------------------ tree

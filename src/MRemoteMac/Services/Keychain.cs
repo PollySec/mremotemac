@@ -4,8 +4,9 @@ using MRemoteMac.Rdp;
 namespace MRemoteMac.Services;
 
 /// <summary>
-/// Secrets in the macOS login keychain (generic password items, accessible when unlocked, this device only).
-/// The connection database key lives here, so the vault is protected by the user's login and FileVault.
+/// Secrets in the macOS login keychain (file-based generic password items). The key-encryption key of the connection
+/// database lives here, so unlocking the vault needs the user's login session; the item can be inspected in Keychain
+/// Access like any other login item. Access to an item is tied to the signature of the app that created it.
 /// </summary>
 public static class Keychain
 {

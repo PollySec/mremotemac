@@ -21,6 +21,8 @@ public sealed partial class VaultHeader
 
     public int Version { get; set; } = 1;
     public string Mode { get; set; } = KeychainMode;
+    /// <summary>Keychain account that holds the key-encryption key (random id, so the vault survives moves and renames).</summary>
+    public string KeychainAccount { get; set; } = "";
     public string Kdf { get; set; } = "PBKDF2-HMAC-SHA256";
     public int Iterations { get; set; } = DefaultIterations;
     public string Salt { get; set; } = "";
@@ -47,8 +49,10 @@ public sealed partial class VaultHeader
     }
 
     /// <summary>Header for keychain mode: the key-encryption key lives in the keychain, the data key is wrapped here.</summary>
-    public static VaultHeader ForKeychain(byte[] kek, byte[] dataKey)
-        => new() { Mode = KeychainMode, Salt = "", Iterations = 0, Kdf = "none", WrappedKey = Wrap(kek, dataKey) };
+    public static VaultHeader ForKeychain(byte[] kek, byte[] dataKey, string keychainAccount)
+        => new() { Mode = KeychainMode, KeychainAccount = keychainAccount, Salt = "", Iterations = 0, Kdf = "none", WrappedKey = Wrap(kek, dataKey) };
+
+    public static string NewKeychainAccount() => "vault:" + Convert.ToHexString(RandomNumberGenerator.GetBytes(8)).ToLowerInvariant();
 
     /// <summary>Header for master-password mode: PBKDF2 over a fresh salt wraps the data key.</summary>
     public static VaultHeader ForPassword(string password, byte[] dataKey, int iterations = DefaultIterations)
