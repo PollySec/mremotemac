@@ -484,6 +484,8 @@ static void dl_request(mr_session* s, UINT32 flags, UINT32 cb)
 		dl_finish(s, "could not request file contents");
 }
 
+static void dl_close_current(mr_session* s);
+
 static void dl_next_file(mr_session* s)
 {
 	while (s->dl.index < s->remote_file_count)
