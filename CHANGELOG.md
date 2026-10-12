@@ -3,6 +3,12 @@
 All notable changes to mRemoteMac are documented here. The format follows [Keep a Changelog](https://keepachangelog.com)
 and versions follow [Semantic Versioning](https://semver.org) via git tags (MinVer).
 
+## [1.1.1] – 2026-10-12
+
+### Changed
+- New app icon: a centred, mirror-symmetric display on a stand with a green "connected" LED in the foot, drawn
+  procedurally like before (`Services/IconRenderer.cs`).
+
 ## [1.1.0] – 2026-10-12
 
 ### Added
