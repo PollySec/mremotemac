@@ -131,6 +131,9 @@ Frames go from FreeRDP's GDI buffer straight into the Avalonia bitmap on the RDP
 rectangles only); the UI thread merely invalidates. Prompts that FreeRDP needs answered synchronously
 (certificate, credentials) are marshalled to the UI thread while the RDP thread waits.
 
+Measurements, the frame-path cost model and the experiments that did not pay off are in
+[docs/performance.md](docs/performance.md).
+
 `Config/ConnectionsFile.cs` and `Config/Crypto.cs` implement the mRemoteNG serializer: PBKDF2-HMAC-SHA1 key
 derivation, AES-GCM with a 16-byte nonce and the salt as associated data, exactly as mRemoteNG writes it.
 

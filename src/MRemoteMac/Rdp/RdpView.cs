@@ -74,6 +74,7 @@ public sealed class RdpView : Control, IRdpFrameTarget
     public RdpView()
     {
         ClipToBounds = true;
+        RenderOptions.SetEdgeMode(this, EdgeMode.Aliased); // the desktop rectangle is pixel-aligned: skip AA edge work per frame
         // FreeRDP's own clients send at most one layout per 500 ms; the shim enforces the same, so retry until accepted
         _resizeTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(500), DispatcherPriority.Background, (_, _) =>
         {

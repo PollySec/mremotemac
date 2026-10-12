@@ -147,6 +147,13 @@ public sealed partial class MainWindow : Window
             await UiTestRunner.Run(this, script, Environment.GetEnvironmentVariable("MRM_OUT") ?? Path.Combine(Path.GetDirectoryName(script)!, "out"));
             return;
         }
+        // MRM_FRAMEBENCH=WxH@fps[:dirtyPercent] — synthetic frames through the real IRdpFrameTarget path for 10 s
+        if (Environment.GetEnvironmentVariable("MRM_FRAMEBENCH") is { Length: > 0 } bench)
+        {
+            await FrameBenchAsync(bench);
+            ForceClose();
+            return;
+        }
 #endif
         if (Environment.GetEnvironmentVariable("MRM_SELECT") is { Length: > 0 } selName &&
             _vm.Root.Descendants().FirstOrDefault(n => n.Name == selName) is { } selNode)
@@ -899,6 +906,50 @@ public sealed partial class MainWindow : Window
 
     private ConnectionTab? CurrentTab => (Tabs?.SelectedItem as TabItem)?.Tag as ConnectionTab;
     public ConnectionTab? CurrentTabForTest => CurrentTab;
+
+#if DEBUG
+    private async Task FrameBenchAsync(string spec)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(spec, @"^(\d+)x(\d+)@(\d+)(?::(\d+))?$");
+        if (!m.Success) { Notifications.Instance.Error($"bad MRM_FRAMEBENCH '{spec}'"); return; }
+        int w = int.Parse(m.Groups[1].Value), h = int.Parse(m.Groups[2].Value), fps = int.Parse(m.Groups[3].Value);
+        var dirtyPercent = m.Groups[4].Success ? int.Parse(m.Groups[4].Value) : 100;
+        var view = new Rdp.RdpView();
+        Tabs.Items.Add(new TabItem { Header = "bench", Content = view });
+        Tabs.SelectedIndex = Tabs.Items.Count - 1;
+        await Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Loaded);
+
+        var frames = new byte[2][];
+        for (var i = 0; i < 2; i++) { frames[i] = new byte[w * h * 4]; Random.Shared.NextBytes(frames[i]); }
+        var dirtyRows = Math.Max(1, h * dirtyPercent / 100);
+        var period = TimeSpan.FromSeconds(1.0 / fps);
+        var written = 0;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var writer = new Thread(() =>
+        {
+            view.Resize(w, h);
+            var next = sw.Elapsed;
+            while (sw.Elapsed < TimeSpan.FromSeconds(10))
+            {
+                var buf = frames[written & 1];
+                var y0 = (written * 37) % Math.Max(1, h - dirtyRows);
+                unsafe { fixed (byte* p = buf) view.Write(p + (long)y0 * w * 4, w * 4, 0, y0, w, dirtyRows); }
+                view.Present();
+                written++;
+                next += period;
+                var wait = next - sw.Elapsed;
+                if (wait > TimeSpan.Zero) Thread.Sleep(wait);
+            }
+        }) { IsBackground = true, Name = "framebench" };
+        writer.Start();
+        while (writer.IsAlive) await Task.Delay(100);
+        var pid = Environment.ProcessId;
+        var cpu = System.Diagnostics.Process.GetCurrentProcess().TotalProcessorTime;
+        var line = $"framebench {w}x{h}@{fps} dirty={dirtyPercent}%: written={written} presented={view.FrameCount} in {sw.Elapsed.TotalSeconds:0.0}s, process CPU total={cpu.TotalSeconds:0.00}s pid={pid}";
+        Console.WriteLine(line);
+        Notifications.Instance.Info(line);
+    }
+#endif
 
     private void OnTabSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
