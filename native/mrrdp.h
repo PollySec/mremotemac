@@ -114,9 +114,13 @@ MRRDP_API int32_t mr_set_clipboard_text(mr_session* s, const char* utf8);
 /* announces local files (absolute paths, newline separated) to the session; replaces any announced text */
 MRRDP_API int32_t mr_set_clipboard_files(mr_session* s, const char* paths_newline_separated);
 /* downloads the files the session last offered into dest_dir (created); progress via callbacks. 0 = not started,
- * 1 = started, 2 = started and file promises for the items are on the Mac pasteboard (a paste waits for the data).
+ * 1 = started, 2 = started and file promises for the items are on the Mac pasteboard; *promise_token then identifies
+ * them for mr_promise_drag. items receives the top-level entries as "<f|d>\t<name>\n" lines (may be truncated).
  * Call on the main thread (the pasteboard is written here). */
-MRRDP_API int32_t mr_clipboard_fetch_files(mr_session* s, const char* dest_dir);
+MRRDP_API int32_t mr_clipboard_fetch_files(mr_session* s, const char* dest_dir, int64_t* promise_token, char* items, int32_t items_cap);
+/* starts a Finder-style drag of the promised items from the window's content view (NSView*), main thread, during a
+ * mouse event; the drop completes when the transfer is done. 1 = drag session began */
+MRRDP_API int32_t mr_promise_drag(int64_t promise_token, void* nsview);
 
 #ifdef __cplusplus
 }

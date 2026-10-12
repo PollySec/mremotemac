@@ -37,6 +37,7 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
     private readonly DispatcherTimer _clipboardTimer;
     private readonly DispatcherTimer _idleTimer;
     private readonly Border _frame;
+    private readonly Controls.FileTray _tray = new();
     private int _generation; // guards late events from a replaced session
 
     [ObservableProperty] private string _title;
@@ -79,7 +80,7 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
                 Children = { _overlayText, _reconnectButton }
             }
         };
-        _frame = new Border { Child = new Panel { Children = { View, _noise, _overlay } }, BorderThickness = new Thickness(0) };
+        _frame = new Border { Child = new Panel { Children = { View, _noise, _overlay, _tray } }, BorderThickness = new Thickness(0) };
         ApplyFrameColor();
         Content = new Panel { Children = { _frame } };
         _idleTimer = new DispatcherTimer(TimeSpan.FromSeconds(15), DispatcherPriority.Background, (_, _) => CheckIdle());
@@ -318,29 +319,30 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
         var what = $"{count - folders} file(s){(folders > 0 ? $" and {folders} folder(s)" : "")} ({mb:0.#} MB): {preview}";
         if (mb <= _settings.ClipboardFilesAutoFetchMB)
         {
-            StartFetch(what);
+            StartFetch(what, totalBytes);
             return;
         }
         AsyncHelper.Fire(async () =>
         {
             var r = await Dialogs.Dialogs.Message(_owner, "Fetch files from the session?",
                 $"{Info.Name} copied {what}. Fetch them to this Mac now? They are put on the clipboard when done.", Dialogs.Dialogs.MsgButtons.YesNo);
-            if (r == Dialogs.Dialogs.MsgResult.Yes) StartFetch(what);
+            if (r == Dialogs.Dialogs.MsgResult.Yes) StartFetch(what, totalBytes);
             else Notifications.Instance.Info($"{Info.Name}: Clipboard: not fetching {what}");
         }, "Clipboard files");
     }
 
-    private void StartFetch(string what)
+    private void StartFetch(string what, ulong totalBytes)
     {
         if (Session is null) return;
         var dest = Path.Combine(AppSettings.ClipboardCacheDirectory, Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture), $"{Info.ConstantId[..8]}-{++_fetchCounter}");
-        var started = Session.FetchClipboardFiles(dest);
+        var started = Session.FetchClipboardFiles(dest, out var token, out var items);
         _fetchPromised = started == RdpSession.FetchStart.StartedWithPromises;
         if (_fetchPromised)
         {
             _lastPasteboardChange = Native.mr_pasteboard_change_count(); // our own promises must not be pushed back
             _lastLocalClipboard = "promise:" + dest;
-            Notifications.Instance.Info($"{Info.Name}: Clipboard: fetching {what}; paste in Finder once the files are reported ready");
+            _tray.Begin(token, items, totalBytes);
+            Notifications.Instance.Info($"{Info.Name}: Clipboard: fetching {what}; drag the card in the session to the Finder, or paste there once ready");
         }
         else if (started == RdpSession.FetchStart.Started)
             Notifications.Instance.Info($"{Info.Name}: Clipboard: fetching {what} into {dest}");
@@ -348,14 +350,39 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
             Notifications.Instance.Warn($"{Info.Name}: Clipboard: could not start fetching {what} (a transfer is already running or the session offered nothing)");
     }
 
+    /// <summary>Test mode: shows the tray for a file that is already on disk, with a simulated 2-second transfer.</summary>
+    internal void DemoFileTray(string path)
+    {
+        var dir = Path.GetDirectoryName(path)!;
+        var name = Path.GetFileName(path);
+        var isDir = Directory.Exists(path);
+        var token = Native.mr_promise_publish(dir, name + "\n", isDir ? "d" : "f");
+        _lastPasteboardChange = Native.mr_pasteboard_change_count();
+        var total = isDir ? 0UL : (ulong)new FileInfo(path).Length;
+        _tray.Begin(token, [(isDir, name)], total);
+        var step = 0;
+        var timer = new DispatcherTimer(TimeSpan.FromMilliseconds(200), DispatcherPriority.Background, (_, _) => { });
+        timer.Tick += (_, _) =>
+        {
+            step++;
+            if (step < 10) { _tray.Progress(total * (ulong)step / 10, total, name); return; }
+            timer.Stop();
+            Native.mr_promise_complete(token, null);
+            _tray.Finish(1, null);
+        };
+        timer.Start();
+    }
+
     private void OnClipboardFileProgress(ulong done, ulong total, string name)
     {
         var pct = total > 0 ? (int)(done * 100 / total) : 0;
+        _tray.Progress(done, total, name);
         Notifications.Instance.Info($"{Info.Name}: Clipboard: {name} … {done / 1048576.0:0.#} of {total / 1048576.0:0.#} MB ({pct}%)");
     }
 
     private async Task OnClipboardFilesDoneAsync(string dest, int files, string? error)
     {
+        _tray.Finish(files, error);
         if (error is not null)
         {
             Notifications.Instance.Error($"{Info.Name}: Clipboard: file transfer failed: {error}");

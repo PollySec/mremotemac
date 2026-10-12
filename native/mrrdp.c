@@ -731,8 +731,12 @@ static UINT mr_cliprdr_server_file_contents_response(CliprdrClientContext* ctx,
 	return CHANNEL_RC_OK;
 }
 
-int32_t mr_clipboard_fetch_files(mr_session* s, const char* dest_dir)
+int32_t mr_clipboard_fetch_files(mr_session* s, const char* dest_dir, int64_t* promise_token, char* items, int32_t items_cap)
 {
+	if (promise_token)
+		*promise_token = 0;
+	if (items && items_cap > 0)
+		items[0] = 0;
 	if (!s || !dest_dir || !s->remote_files || s->remote_file_count == 0 || s->dl.active)
 		return 0;
 	CliprdrClientContext* clip = clip_ctx(s);
@@ -783,11 +787,19 @@ int32_t mr_clipboard_fetch_files(mr_session* s, const char* dest_dir)
 				const int dir = (fd->dwFlags & FD_ATTRIBUTES) && (fd->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY);
 				if (uri_append(&names, &ncap, &nlen, rel) && uri_append(&names, &ncap, &nlen, "\n"))
 					kinds[k++] = dir ? 'd' : 'f';
+				if (items && items_cap > 0)
+				{
+					const size_t used = strlen(items);
+					if (used < (size_t)items_cap)
+						snprintf(items + used, (size_t)items_cap - used, "%c\t%s\n", dir ? 'd' : 'f', rel);
+				}
 			}
 			free(rel);
 		}
 		if (names && kinds && k > 0)
 			s->dl.promise = mr_promise_publish(dest_dir, names, kinds);
+		if (promise_token)
+			*promise_token = s->dl.promise;
 		mr_tracef(s, "file promises for %zu top-level item(s): %s", k, s->dl.promise ? "on the Mac pasteboard" : "NOT published");
 		free(names);
 		free(kinds);

@@ -51,7 +51,11 @@ internal static unsafe partial class Native
     [LibraryImport(Lib)] public static partial int mr_resize_desktop(IntPtr s, uint width, uint height);
     [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)] public static partial int mr_set_clipboard_text(IntPtr s, string? utf8);
     [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)] public static partial int mr_set_clipboard_files(IntPtr s, string? pathsNewlineSeparated);
-    [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)] public static partial int mr_clipboard_fetch_files(IntPtr s, string destDir);
+    [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)] public static partial int mr_clipboard_fetch_files(IntPtr s, string destDir, out long promiseToken, byte* items, int itemsCap);
+    [LibraryImport(Lib)] public static partial int mr_promise_drag(long promiseToken, IntPtr nsView);
+    // test mode only: a transfer without a session, to exercise the file tray
+    [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)] public static partial long mr_promise_publish(string destDir, string names, string kinds);
+    [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)] public static partial void mr_promise_complete(long token, string? error);
     // macOS Keychain (generic password items); status 0 = success, -25300 = not found, -128 = user cancelled
     [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)] public static partial int mr_keychain_get(string service, string account, out IntPtr data, out int len);
     [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)] public static partial int mr_keychain_set(string service, string account, ReadOnlySpan<byte> data, int len, string label);

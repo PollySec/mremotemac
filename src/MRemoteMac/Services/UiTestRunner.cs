@@ -88,6 +88,7 @@ public sealed class UiTestRunner : IDisposable
             case "dump": Dump(); break;
             case "expect": Expect(arg); break;
             case "log": Log(arg); break;
+            case "filetray": _main.CurrentTabForTest?.DemoFileTray(arg); break;
             case "exit": _main.ForceClose(); break;
             case "quit": _main.Close(); break;
             default: throw new InvalidOperationException($"unknown command {cmd}");

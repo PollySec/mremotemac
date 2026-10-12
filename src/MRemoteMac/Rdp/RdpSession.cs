@@ -204,8 +204,26 @@ public sealed unsafe class RdpSession : IDisposable
     /// <see cref="FetchStart.StartedWithPromises"/> the Mac pasteboard now holds file promises, so a paste in Finder
     /// completes by itself when the data has arrived.
     /// </summary>
-    public FetchStart FetchClipboardFiles(string destDir)
-        => _handle == IntPtr.Zero ? FetchStart.NotStarted : (FetchStart)Math.Clamp(Native.mr_clipboard_fetch_files(_handle, destDir), 0, 2);
+    public FetchStart FetchClipboardFiles(string destDir, out long promiseToken, out List<(bool IsDirectory, string Name)> items)
+    {
+        promiseToken = 0;
+        items = [];
+        if (_handle == IntPtr.Zero) return FetchStart.NotStarted;
+        var buf = new byte[8192];
+        int rc;
+        unsafe
+        {
+            fixed (byte* p = buf) rc = Native.mr_clipboard_fetch_files(_handle, destDir, out promiseToken, p, buf.Length);
+        }
+        var len = Array.IndexOf(buf, (byte)0);
+        var text = System.Text.Encoding.UTF8.GetString(buf, 0, len < 0 ? buf.Length : len);
+        foreach (var line in text.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var tab = line.IndexOf('\t', StringComparison.Ordinal);
+            if (tab == 1) items.Add((line[0] == 'd', line[(tab + 1)..]));
+        }
+        return (FetchStart)Math.Clamp(rc, 0, 2);
+    }
 
     /// <summary>Presses all scancodes in order and releases them in reverse.</summary>
     public void SendKeyCombination(params ReadOnlySpan<uint> scancodes)

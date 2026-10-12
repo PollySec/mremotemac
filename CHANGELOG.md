@@ -13,6 +13,10 @@ and versions follow [Semantic Versioning](https://semver.org) via git tags (MinV
   Finder to copy them. Progress and the result show in the notifications panel. Remote clipboard data is locked
   during a transfer when the server supports it.
 - Clipboard diagnostics in the notifications panel (channel ready, offered formats, requests, transfers).
+- **File card.** When files copied in a session start downloading, a card slides into the session view with the
+  file name, kind and progress. Drag it to the Finder (or any app) at any time, even mid-transfer: the drop carries
+  macOS file promises and lands by itself the moment the data is in. ⌘V in the Finder works once the card says ready
+  (the Finder ignores promises for pasting, so until then its Paste stays greyed out instead of pasting old content).
 - **Log file.** Everything in the notifications panel, plus FreeRDP's clipboard trace, is written to
   `~/Library/Logs/mRemoteMac/mRemoteMac.log` (Help ▸ Show Log Folder; rotated at 5 MB).
 
