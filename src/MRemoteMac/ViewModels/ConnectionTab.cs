@@ -155,7 +155,16 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
             Info.OpenConnections++;
             View.Focus();
             _lastPasteboardChange = Native.mr_pasteboard_change_count();
-            if (Info.GetEffective<bool>(nameof(ConnectionInfo.RedirectClipboard))) _clipboardTimer.Start();
+            if (Info.GetEffective<bool>(nameof(ConnectionInfo.RedirectClipboard)))
+            {
+                _clipboardTimer.Start();
+                // whatever was copied before the connection came up belongs to this session too: a new session has
+                // nothing of ours yet, so forget what an earlier one was given (kept natively until MonitorReady)
+                _lastLocalClipboard = null;
+                AsyncHelper.Fire(PushLocalClipboardAsync, "Clipboard");
+            }
+            else
+                Notifications.Instance.Warn($"{Info.Name}: Clipboard: sharing is off for this connection (Redirect Clipboard); copy and paste between the Mac and the session needs it turned on and a reconnect");
             if (Info.GetEffective<int>(nameof(ConnectionInfo.RdpMinutesToIdleTimeout)) > 0) _idleTimer.Start();
             Notifications.Instance.Info($"Connected to {Info.Name} ({Info.GetEffective<string>(nameof(ConnectionInfo.Hostname))})");
         });
@@ -301,7 +310,7 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
         }
 
         var text = await clip.TryGetTextAsync().ConfigureAwait(true);
-        if (string.IsNullOrEmpty(text)) { Notifications.Instance.Info($"{Info.Name}: Clipboard: Mac clipboard has no text or files"); return; }
+        if (string.IsNullOrEmpty(text)) { AppLog.Trace($"{Info.Name}: Mac clipboard has no text or files"); return; }
         if (text == _lastLocalClipboard) { AppLog.Trace($"{Info.Name}: same text as last time, not announced again"); return; }
         _lastLocalClipboard = text;
         var sent = Session.SetClipboardText(text);

@@ -1,7 +1,7 @@
 #!/bin/zsh
 # Builds clipsrv: FreeRDP's sample server (from ../mRemoteMac-deps, built by native/build-deps.sh with the server
 # enabled) plus sf_clip.c, an rdpclip-like file clipboard. Run it like sfreerdp-server:
-#   CLIPSRV_OFFER=<file|dir> CLIPSRV_DELAY_MS=150 CLIPSRV_MAX_REQUEST=1048576 CLIPSRV_SAVE=<dir> \
+#   CLIPSRV_OFFER=<file|dir> CLIPSRV_TEXT=<text> CLIPSRV_PASTE=1 CLIPSRV_DELAY_MS=150 CLIPSRV_MAX_REQUEST=1048576 CLIPSRV_SAVE=<dir> \
 #     tools/clipsrv/out/clipsrv --port=3390 --cert=server.crt --key=server.key
 # (see the header of sf_clip.c for the switches). Must be started from the sample's directory so it finds its icon.
 set -e

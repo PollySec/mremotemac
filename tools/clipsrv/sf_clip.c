@@ -4,6 +4,8 @@
  *   CLIPSRV_DELAY_MS=<ms>        sleep before answering each file contents request (simulated latency)
  *   CLIPSRV_SAVE=<dir>           when the client announces FileGroupDescriptorW, fetch everything into this dir
  *   CLIPSRV_CHUNK=<bytes>        request size used when fetching (default 262144, like rdpclip)
+ *   CLIPSRV_TEXT=<text>          offer this text (CF_UNICODETEXT + CF_TEXT) once the client's first format list arrives
+ *   CLIPSRV_PASTE=1              when the client announces text, lock and fetch it like a paste in Windows would
  */
 #include <freerdp/config.h>
 #include <winpr/assert.h>
@@ -34,6 +36,9 @@ typedef struct
 	UINT32 max_request, delay_ms, chunk;
 	const char* save_dir;
 	int offered;
+	const char* text;
+	int paste_text;
+	UINT32 pending_format; /* format of our outstanding Format Data Request */
 	UINT32 my_fgd_id;
 	UINT32 lock_counter;
 	/* fetching from the client */
@@ -102,6 +107,19 @@ static UINT send_offer(clip_state* st)
 	return st->ctx->ServerFormatList(st->ctx, &list);
 }
 
+static UINT send_text_offer(clip_state* st)
+{
+	CLIPRDR_FORMAT fmts[2] = { 0 };
+	fmts[0].formatId = CF_UNICODETEXT;
+	fmts[1].formatId = CF_TEXT;
+	CLIPRDR_FORMAT_LIST list = { 0 };
+	list.common.msgType = CB_FORMAT_LIST;
+	list.numFormats = 2;
+	list.formats = fmts;
+	fprintf(stderr, "[clipsrv] offering text (%zu bytes)\n", strlen(st->text));
+	return st->ctx->ServerFormatList(st->ctx, &list);
+}
+
 static UINT on_client_caps(CliprdrServerContext* ctx, const CLIPRDR_CAPABILITIES* caps)
 {
 	(void)caps;
@@ -120,10 +138,31 @@ static UINT on_client_format_list(CliprdrServerContext* ctx, const CLIPRDR_FORMA
 	resp.common.msgFlags = CB_RESPONSE_OK;
 	UINT rc = ctx->ServerFormatListResponse(ctx, &resp);
 	UINT32 fgd = 0;
+	int unicode = 0;
 	for (UINT32 i = 0; i < list->numFormats; i++)
+	{
 		if (list->formats[i].formatName && strcmp(list->formats[i].formatName, "FileGroupDescriptorW") == 0)
 			fgd = list->formats[i].formatId;
-	fprintf(stderr, "[clipsrv] client format list: %u formats, FileGroupDescriptorW id %u\n", list->numFormats, fgd);
+		if (list->formats[i].formatId == CF_UNICODETEXT)
+			unicode = 1;
+	}
+	fprintf(stderr, "[clipsrv] client format list: %u formats, FileGroupDescriptorW id %u, unicode text %d\n", list->numFormats,
+	        fgd, unicode);
+	if (!fgd && unicode && st->paste_text)
+	{
+		if (ctx->canLockClipData)
+		{
+			CLIPRDR_LOCK_CLIPBOARD_DATA l = { 0 };
+			l.common.msgType = CB_LOCK_CLIPDATA;
+			l.clipDataId = ++st->lock_counter;
+			(void)ctx->ServerLockClipboardData(ctx, &l);
+		}
+		CLIPRDR_FORMAT_DATA_REQUEST req = { 0 };
+		req.common.msgType = CB_FORMAT_DATA_REQUEST;
+		req.requestedFormatId = CF_UNICODETEXT;
+		st->pending_format = CF_UNICODETEXT;
+		(void)ctx->ServerFormatDataRequest(ctx, &req);
+	}
 	if (fgd && st->save_dir && !st->dl)
 	{
 		if (ctx->canLockClipData)
@@ -137,12 +176,18 @@ static UINT on_client_format_list(CliprdrServerContext* ctx, const CLIPRDR_FORMA
 		CLIPRDR_FORMAT_DATA_REQUEST req = { 0 };
 		req.common.msgType = CB_FORMAT_DATA_REQUEST;
 		req.requestedFormatId = fgd;
+		st->pending_format = fgd;
 		(void)ctx->ServerFormatDataRequest(ctx, &req);
 	}
 	if (st->offer_count && !st->offered)
 	{
 		st->offered = 1;
 		(void)send_offer(st);
+	}
+	else if (st->text && !st->offered)
+	{
+		st->offered = 1;
+		(void)send_text_offer(st);
 	}
 	return rc;
 }
@@ -178,11 +223,23 @@ static UINT on_client_format_data_request(CliprdrServerContext* ctx, const CLIPR
 		}
 		free(arr);
 	}
+	else if (req->requestedFormatId == CF_UNICODETEXT && st->text)
+	{
+		size_t wlen = 0;
+		WCHAR* w = ConvertUtf8ToWCharAlloc(st->text, &wlen);
+		data = (BYTE*)w;
+		len = w ? (UINT32)((wlen + 1) * sizeof(WCHAR)) : 0;
+	}
+	else if (req->requestedFormatId == CF_TEXT && st->text)
+	{
+		data = (BYTE*)_strdup(st->text);
+		len = data ? (UINT32)strlen(st->text) + 1 : 0;
+	}
 	resp.common.msgFlags = data ? CB_RESPONSE_OK : CB_RESPONSE_FAIL;
 	resp.common.dataLen = len;
 	resp.requestedFormatData = data;
 	UINT rc = ctx->ServerFormatDataResponse(ctx, &resp);
-	fprintf(stderr, "[clipsrv] descriptor requested (format %u): sent %u bytes\n", req->requestedFormatId, len);
+	fprintf(stderr, "[clipsrv] format %u requested: sent %u bytes\n", req->requestedFormatId, len);
 	free(data);
 	return rc;
 }
@@ -324,6 +381,25 @@ static void dl_next(clip_state* st)
 static UINT on_client_format_data_response(CliprdrServerContext* ctx, const CLIPRDR_FORMAT_DATA_RESPONSE* resp)
 {
 	clip_state* st = ctx->custom;
+	const UINT32 format = st->pending_format;
+	st->pending_format = 0;
+	if (format == CF_UNICODETEXT)
+	{
+		char* utf8 = (resp->common.msgFlags & CB_RESPONSE_OK)
+		                 ? ConvertWCharNToUtf8Alloc((const WCHAR*)resp->requestedFormatData, resp->common.dataLen / sizeof(WCHAR), NULL)
+		                 : NULL;
+		fprintf(stderr, "[clipsrv] PASTED TEXT (%s, %u bytes): %s\n", (resp->common.msgFlags & CB_RESPONSE_OK) ? "ok" : "refused",
+		        resp->common.dataLen, utf8 ? utf8 : "");
+		free(utf8);
+		if (ctx->canLockClipData && st->lock_counter)
+		{
+			CLIPRDR_UNLOCK_CLIPBOARD_DATA u = { 0 };
+			u.common.msgType = CB_UNLOCK_CLIPDATA;
+			u.clipDataId = st->lock_counter;
+			(void)ctx->ServerUnlockClipboardData(ctx, &u);
+		}
+		return CHANNEL_RC_OK;
+	}
 	if (!(resp->common.msgFlags & CB_RESPONSE_OK) || !st->save_dir)
 		return CHANNEL_RC_OK;
 	if (cliprdr_parse_file_list(resp->requestedFormatData, resp->common.dataLen, &st->dl, &st->dl_count) != 0)
@@ -389,6 +465,10 @@ BOOL sf_peer_clip_init(testPeerContext* context)
 		st->chunk = (UINT32)strtoul(v, NULL, 10);
 	if ((v = getenv("CLIPSRV_SAVE")) && *v)
 		st->save_dir = v;
+	if ((v = getenv("CLIPSRV_TEXT")) && *v)
+		st->text = v;
+	if ((v = getenv("CLIPSRV_PASTE")) && *v)
+		st->paste_text = atoi(v) != 0;
 	ctx->custom = st;
 	ctx->rdpcontext = &context->_p;
 	ctx->useLongFormatNames = TRUE;
@@ -405,8 +485,8 @@ BOOL sf_peer_clip_init(testPeerContext* context)
 	ctx->ClientLockClipboardData = on_lock;
 	ctx->ClientUnlockClipboardData = on_unlock;
 	context->clip = ctx;
-	fprintf(stderr, "[clipsrv] clipboard channel up (offer %u entries, max request %u, delay %u ms, save %s)\n",
-	        st->offer_count, st->max_request, st->delay_ms, st->save_dir ? st->save_dir : "-");
+	fprintf(stderr, "[clipsrv] clipboard channel up (offer %u entries, text %s, paste %d, max request %u, delay %u ms, save %s)\n",
+	        st->offer_count, st->text ? "yes" : "no", st->paste_text, st->max_request, st->delay_ms, st->save_dir ? st->save_dir : "-");
 	return ctx->Start(ctx) == CHANNEL_RC_OK;
 }
 
