@@ -3,6 +3,19 @@
 All notable changes to mRemoteMac are documented here. The format follows [Keep a Changelog](https://keepachangelog.com)
 and versions follow [Semantic Versioning](https://semver.org) via git tags (MinVer).
 
+## [1.3.1] – 2026-10-13
+
+### Changed
+- **Clipboard sharing is on by default.** New connections already had it; connections imported from mRemoteNG
+  carried an explicit False, so copy and paste silently did nothing there. The database turns it on once for all of
+  them (a "Clipboard sharing turned on …" revision that File ▸ History… can undo); turning it off afterwards sticks.
+  Connecting with it off now leaves a warning in the notifications.
+
+### Fixed
+- Text (or files) copied on the Mac before the session was up never reached it, and a reconnect skipped what the
+  previous session had been given; the Mac clipboard is now offered to every new session as soon as the clipboard
+  channel is ready.
+
 ## [1.3.0] – 2026-10-12
 
 ### Added
