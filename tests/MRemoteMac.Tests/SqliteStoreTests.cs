@@ -117,4 +117,28 @@ public sealed class SqliteStoreTests : IDisposable
         for (var i = 0; i < SqliteConnectionStore.MaxRevisions + 20; i++) { tree.Name = "R" + i; store.Save(tree); }
         Assert.Equal(SqliteConnectionStore.MaxRevisions, store.History().Count);
     }
+
+    [Fact]
+    public void ClipboardIsTurnedOnOnceAsARevision()
+    {
+        var key = NewKey();
+        var tree = SampleTree(); // FS01 and Standalone have it off, as an mRemoteNG import would
+        foreach (var n in tree.Descendants()) n.RedirectClipboard = n.Name == "DC01";
+        using (var store = SqliteConnectionStore.Open(DbPath, key)) store.Save(tree, "Imported");
+
+        var vm = new MRemoteMac.ViewModels.MainViewModel(new MRemoteMac.Services.AppSettings());
+        vm.UseStore(SqliteConnectionStore.Open(DbPath, key));
+        Assert.All(vm.Root.Descendants(), n => Assert.True(n.RedirectClipboard));
+        Assert.Equal("Clipboard sharing turned on for 2 connections", vm.Store!.History()[0].Summary);
+
+        // turned off again by the user: stays off on the next start
+        vm.Root.Descendants().First(n => n.Name == "FS01").RedirectClipboard = false;
+        vm.Save("FS01 without clipboard");
+        vm.CloseStore();
+        var vm2 = new MRemoteMac.ViewModels.MainViewModel(new MRemoteMac.Services.AppSettings());
+        vm2.UseStore(SqliteConnectionStore.Open(DbPath, key));
+        Assert.False(vm2.Root.Descendants().First(n => n.Name == "FS01").RedirectClipboard);
+        Assert.Equal("FS01 without clipboard", vm2.Store!.History()[0].Summary);
+        vm2.CloseStore();
+    }
 }

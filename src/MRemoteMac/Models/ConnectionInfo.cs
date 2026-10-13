@@ -122,8 +122,8 @@ public partial class ConnectionInfo : ObservableObject
     [ObservableProperty] private string _redirectDiskDrivesCustom = "";
     [property: Category("Redirect"), DisplayName("Printers"), Description("Make the Mac printers available in the session.")]
     [ObservableProperty] private bool _redirectPrinters;
-    [property: Category("Redirect"), DisplayName("Clipboard"), Description("Share the text clipboard in both directions.")]
-    [ObservableProperty] private bool _redirectClipboard;
+    [property: Category("Redirect"), DisplayName("Clipboard"), Description("Share the clipboard (text and files) in both directions.")]
+    [ObservableProperty] private bool _redirectClipboard = true; // what people expect from a desktop RDP client
     [property: Category("Redirect"), DisplayName("Ports"), Description("Redirect serial ports into the session.")]
     [ObservableProperty] private bool _redirectPorts;
     [property: Category("Redirect"), DisplayName("Smart Cards"), Description("Redirect smart card readers for logon and applications.")]

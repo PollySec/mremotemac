@@ -129,6 +129,11 @@ public sealed partial class SqliteConnectionStore : IConnectionStore
         cmd.ExecuteNonQuery();
     }
 
+    /// <summary>One-time data fix-ups are recorded by name in the meta table so they never run twice.</summary>
+    public bool IsMigrationDone(string name) => GetMeta("migration:" + name) is not null;
+
+    public void MarkMigrationDone(string name) => SetMeta("migration:" + name, DateTimeOffset.UtcNow.ToString("O"));
+
     // ------------------------------------------------------------------ records
 
     /// <summary>One node row; attributes are exactly what the mRemoteNG serializer would write (secrets in plain text).</summary>

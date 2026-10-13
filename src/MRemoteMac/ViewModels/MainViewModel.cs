@@ -48,6 +48,27 @@ public sealed partial class MainViewModel : ObservableObject
         IsDirty = false;
         old?.Dispose();
         Notifications.Info($"Loaded {root.Descendants().Count(n => !n.IsContainer)} connections from {store.Location}");
+        if (store is SqliteConnectionStore db) ApplyMigrations(db);
+    }
+
+    /// <summary>
+    /// Clipboard sharing is on by default, but connections imported from mRemoteNG carry an explicit
+    /// False. Turned on once per database, as its own revision so History can undo it.
+    /// </summary>
+    private void ApplyMigrations(SqliteConnectionStore db)
+    {
+        const string clipboardOn = "clipboard-on";
+        // a database created empty on first start is filled by the import right after: run on the next start instead
+        if (db.IsMigrationDone(clipboardOn) || !Root.Descendants().Any(n => !n.IsContainer)) return;
+        var off = Root.Descendants().Where(n => !n.RedirectClipboard).ToList();
+        foreach (var n in off) n.RedirectClipboard = true;
+        if (off.Count > 0)
+        {
+            var connections = off.Count(n => !n.IsContainer);
+            Save($"Clipboard sharing turned on for {connections} connections");
+            Notifications.Info($"Clipboard sharing is now on for {connections} connections that had it off (imported from mRemoteNG). File ▸ History… can undo this.");
+        }
+        db.MarkMigrationDone(clipboardOn);
     }
 
     /// <summary>Replaces the tree with a revision from the store's history and records the restore as a new revision.</summary>
@@ -115,7 +136,7 @@ public sealed partial class MainViewModel : ObservableObject
     public ConnectionInfo AddConnection(ConnectionInfo? at)
     {
         var parent = TargetContainerFor(at);
-        var c = new ConnectionInfo { RedirectClipboard = true }; // what people expect from a desktop RDP client
+        var c = new ConnectionInfo();
         if (parent is not RootNodeInfo) foreach (var p in parent.Inheritance) c.Inheritance.Add(p);
         var index = at is not null && !at.IsContainer && at.Parent == parent ? parent.Children.IndexOf(at) + 1 : -1;
         parent.AddChild(c, index);
@@ -247,7 +268,7 @@ public sealed partial class MainViewModel : ObservableObject
     public ConnectionInfo QuickConnect(string input)
     {
         var text = input.Trim();
-        var c = new ConnectionInfo { IsQuickConnect = true, Protocol = ProtocolType.RDP, RdpVersion = RdpVersion.Highest, RedirectClipboard = true };
+        var c = new ConnectionInfo { IsQuickConnect = true, Protocol = ProtocolType.RDP, RdpVersion = RdpVersion.Highest };
         var at = text.LastIndexOf('@');
         if (at > 0) { c.Username = text[..at]; text = text[(at + 1)..]; }
         var colon = text.LastIndexOf(':');
@@ -257,7 +278,6 @@ public sealed partial class MainViewModel : ObservableObject
         c.Resolution = RdpResolutions.FitToWindow;
         c.AutomaticResize = true;
         c.Colors = RdpColors.Colors32Bit;
-        c.RedirectClipboard = true;
         if (!Settings.QuickConnectHistory.Contains(input.Trim()))
         {
             Settings.QuickConnectHistory.Insert(0, input.Trim());

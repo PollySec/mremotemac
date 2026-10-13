@@ -105,6 +105,22 @@ public class ConnectionsFileTests
     }
 
     [Fact]
+    public void ClipboardIsRedirectedUnlessTheFileSaysOtherwise()
+    {
+        Assert.True(new ConnectionInfo().RedirectClipboard);
+        const string text = """
+            <?xml version="1.0" encoding="utf-8"?>
+            <mrng:Connections xmlns:mrng="http://mremoteng.org" Name="Connections" ConfVersion="2.6">
+              <Node Name="Default" Type="Connection" Hostname="a" />
+              <Node Name="Off" Type="Connection" Hostname="b" RedirectClipboard="false" />
+            </mrng:Connections>
+            """;
+        var r = ConnectionsFile.LoadFromText(text, null);
+        Assert.True(r.Root.Children[0].RedirectClipboard);
+        Assert.False(r.Root.Children[1].RedirectClipboard);
+    }
+
+    [Fact]
     public void SaveWithMasterPasswordAndFullEncryption()
     {
         var root = new RootNodeInfo { MasterPassword = "topsecret" };
