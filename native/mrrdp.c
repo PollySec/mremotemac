@@ -61,6 +61,7 @@ struct mr_session
 	char* clip_local_text; /* text we announced to the remote side */
 	char* clip_local_files; /* text/uri-list of local files announced to the remote side, NULL = none */
 	int clip_ready;        /* MonitorReady handled: format lists may be sent (MS-RDPECLIP 3.1.1.1) */
+	int32_t clip_list_acks; /* successful Format List Responses to our format lists (guarded by clip_lock) */
 	UINT32 remote_text_format; /* format id the remote side offered, 0 if none */
 	UINT32 remote_fgd_format;  /* remote FileGroupDescriptorW format id, 0 if none */
 	int pending_request;       /* which format data we asked the server for: 0 none, 1 text, 2 files */
@@ -1059,8 +1060,17 @@ static UINT mr_cliprdr_server_format_list(CliprdrClientContext* ctx,
 static UINT mr_cliprdr_server_format_list_response(CliprdrClientContext* ctx,
                                                    const CLIPRDR_FORMAT_LIST_RESPONSE* r)
 {
-	(void)ctx;
-	(void)r;
+	mr_session* s = clip_session(ctx);
+	int ok = (r->common.msgFlags & CB_RESPONSE_OK) != 0;
+	if (s)
+	{
+		pthread_mutex_lock(&s->clip_lock);
+		if (ok)
+			s->clip_list_acks++;
+		pthread_mutex_unlock(&s->clip_lock);
+		if (!ok)
+			mr_logf(s, "Clipboard: the session refused our format list");
+	}
 	return CHANNEL_RC_OK;
 }
 
@@ -1356,6 +1366,16 @@ int32_t mr_set_clipboard_files(mr_session* s, const char* paths_newline_separate
 		(void)cliprdr_file_context_clear(s->clip_file);
 	/* the list itself is attached when the session locks or requests it (see clip_attach_local_files) */
 	return clip_announce(s);
+}
+
+int32_t mr_clipboard_list_acks(mr_session* s)
+{
+	if (!s)
+		return 0;
+	pthread_mutex_lock(&s->clip_lock);
+	int32_t n = s->clip_list_acks;
+	pthread_mutex_unlock(&s->clip_lock);
+	return n;
 }
 
 /* ---------- channels ---------- */

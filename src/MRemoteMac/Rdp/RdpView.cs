@@ -5,6 +5,7 @@ using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 
 namespace MRemoteMac.Rdp;
@@ -80,6 +81,11 @@ public sealed class RdpView : Control, IRdpFrameTarget
         {
             if (RequestDesktopResize()) _resizeTimer!.Stop();
         });
+        DragDrop.SetAllowDrop(this, true);
+        AddHandler(DragDrop.DragEnterEvent, OnDragEnter);
+        AddHandler(DragDrop.DragOverEvent, OnDragOver);
+        AddHandler(DragDrop.DragLeaveEvent, OnDragLeave);
+        AddHandler(DragDrop.DropEvent, OnDrop);
     }
 
     private void Attach(RdpSession s)
@@ -340,6 +346,85 @@ public sealed class RdpView : Control, IRdpFrameTarget
             flags |= step < 0 ? (ushort)(RdpInput.PTR_FLAGS_WHEEL_NEGATIVE | (0x100 - magnitude)) : (ushort)magnitude;
             _session.SendMouse(flags, x, y);
         }
+    }
+
+    // ---------- files dropped from the Mac ----------
+
+    private List<string> _dragPaths = [];
+
+    /// <summary>Asked while files are dragged over the view: null accepts them, otherwise why they cannot be dropped.</summary>
+    public Func<string?>? FileDropRefusal { get; set; }
+
+    /// <summary>Files are dragged over the view (count, refusal or null), or the drag left or ended (0, null). UI thread.</summary>
+    public event Action<int, string?>? FileDragChanged;
+
+    /// <summary>Files were dropped at this point of the remote desktop. UI thread.</summary>
+    public event Action<IReadOnlyList<string>, int, int>? FilesDropped;
+
+    private static List<string> LocalPaths(IDataTransfer data)
+    {
+        // APFS keeps names as typed (often NFD); Windows expects composed characters, and APFS lookups are normalisation-insensitive
+        return data.TryGetFiles()?.Select(f => f.TryGetLocalPath()).Where(p => !string.IsNullOrEmpty(p))
+            .Select(p => p!.Normalize(System.Text.NormalizationForm.FormC)).ToList() ?? [];
+    }
+
+    private void OnDragEnter(object? sender, DragEventArgs e)
+    {
+        _dragPaths = LocalPaths(e.DataTransfer); // read once: the pasteboard does not change during a drag
+        OnDragOver(sender, e);
+    }
+
+    private void OnDragOver(object? sender, DragEventArgs e)
+    {
+        e.Handled = true;
+        e.DragEffects = DragDropEffects.None;
+        if (_dragPaths.Count == 0 || FileDropRefusal is null) return; // nothing a session can take (text, a promise without a path)
+        var refusal = FileDropRefusal();
+        if (refusal is null) e.DragEffects = DragDropEffects.Copy;
+        FileDragChanged?.Invoke(_dragPaths.Count, refusal);
+        // the remote pointer follows the drag, so Windows highlights what is under it
+        if (refusal is null && _session is not null && ToRemote(e.GetPosition(this), out var x, out var y) && (x != _lastMouseX || y != _lastMouseY))
+        {
+            _lastMouseX = x; _lastMouseY = y;
+            _session.SendMouse(RdpInput.PTR_FLAGS_MOVE, x, y);
+        }
+    }
+
+    private void OnDragLeave(object? sender, DragEventArgs e)
+    {
+        _dragPaths = [];
+        FileDragChanged?.Invoke(0, null);
+    }
+
+    private void OnDrop(object? sender, DragEventArgs e)
+    {
+        e.Handled = true;
+        var paths = _dragPaths.Count > 0 ? _dragPaths : LocalPaths(e.DataTransfer);
+        _dragPaths = [];
+        FileDragChanged?.Invoke(0, null);
+        e.DragEffects = DragDropEffects.None;
+        if (paths.Count == 0 || FileDropRefusal is null || FileDropRefusal() is not null) return;
+        e.DragEffects = DragDropEffects.Copy;
+        DropFiles(paths, e.GetPosition(this));
+    }
+
+    /// <summary>The drop itself, also used by the UI test runner (a real drag cannot be scripted).</summary>
+    internal void DropFiles(IReadOnlyList<string> paths, Point at)
+    {
+        LastInputUtc = DateTime.UtcNow;
+        if (ToRemote(at, out var x, out var y)) FilesDropped?.Invoke(paths, x, y);
+    }
+
+    /// <summary>Clicks the remote desktop at (x, y) and types Ctrl+V, so the window under a drop takes focus and pastes.</summary>
+    public void ClickAndPaste(int x, int y)
+    {
+        if (_session is null) return;
+        ReleaseAllKeys();
+        _lastMouseX = x; _lastMouseY = y;
+        _session.SendMouse(RdpInput.PTR_FLAGS_MOVE, x, y);
+        _session.SendMouse((ushort)(RdpInput.PTR_FLAGS_BUTTON1 | RdpInput.PTR_FLAGS_DOWN), x, y);
+        _session.SendMouse(RdpInput.PTR_FLAGS_BUTTON1, x, y);
+        _session.SendKeyCombination(ScanCodes.LeftControl, ScanCodes.V);
     }
 
     // ---------- keyboard ----------

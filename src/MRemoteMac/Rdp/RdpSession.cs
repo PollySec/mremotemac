@@ -197,6 +197,9 @@ public sealed unsafe class RdpSession : IDisposable
     public bool SetClipboardFiles(IEnumerable<string> paths)
         => _handle != IntPtr.Zero && Native.mr_set_clipboard_files(_handle, string.Join('\n', paths)) != 0;
 
+    /// <summary>Grows each time the session accepts an announced clipboard (Format List Response OK); any thread.</summary>
+    public int ClipboardListAcks => _handle == IntPtr.Zero ? 0 : Native.mr_clipboard_list_acks(_handle);
+
     public enum FetchStart { NotStarted, Started, StartedWithPromises }
 
     /// <summary>

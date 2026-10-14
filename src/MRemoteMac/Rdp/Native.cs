@@ -51,6 +51,7 @@ internal static unsafe partial class Native
     [LibraryImport(Lib)] public static partial int mr_resize_desktop(IntPtr s, uint width, uint height);
     [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)] public static partial int mr_set_clipboard_text(IntPtr s, string? utf8);
     [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)] public static partial int mr_set_clipboard_files(IntPtr s, string? pathsNewlineSeparated);
+    [LibraryImport(Lib)] public static partial int mr_clipboard_list_acks(IntPtr s);
     [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)] public static partial int mr_clipboard_fetch_files(IntPtr s, string destDir, out long promiseToken, byte* items, int itemsCap);
     [LibraryImport(Lib)] public static partial int mr_promise_drag(long promiseToken, IntPtr nsView);
     // test mode only: a transfer without a session, to exercise the file tray

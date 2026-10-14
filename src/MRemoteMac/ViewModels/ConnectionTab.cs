@@ -38,6 +38,8 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
     private readonly DispatcherTimer _idleTimer;
     private readonly Border _frame;
     private readonly Controls.FileTray _tray = new();
+    private readonly Controls.FileDropHint _dropHint = new();
+    private bool _sessionHoldsDrop; // the session's clipboard holds dropped files, not the Mac clipboard
     private int _generation; // guards late events from a replaced session
 
     [ObservableProperty] private string _title;
@@ -80,7 +82,7 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
                 Children = { _overlayText, _reconnectButton }
             }
         };
-        _frame = new Border { Child = new Panel { Children = { View, _noise, _overlay, _tray } }, BorderThickness = new Thickness(0) };
+        _frame = new Border { Child = new Panel { Children = { View, _dropHint, _noise, _overlay, _tray } }, BorderThickness = new Thickness(0) };
         ApplyFrameColor();
         Content = new Panel { Children = { _frame } };
         _idleTimer = new DispatcherTimer(TimeSpan.FromSeconds(15), DispatcherPriority.Background, (_, _) => CheckIdle());
@@ -89,6 +91,9 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
         // and push new local text to the session, so copy on the Mac then paste in the session just works.
         _clipboardTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(500), DispatcherPriority.Background, (_, _) => PollLocalClipboard());
         View.FirstFrame += () => { if (State == TabState.Connected) SetState(TabState.Connected, ""); }; // lifts the overlay
+        View.FileDropRefusal = FileDropRefusal;
+        View.FileDragChanged += OnFileDragChanged;
+        View.FilesDropped += (paths, x, y) => AsyncHelper.Fire(() => DropFilesAsync(paths, x, y), "Drop files");
     }
 
     private ViewScaleMode DefaultScaleMode()
@@ -277,6 +282,12 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
         var count = Native.mr_pasteboard_change_count();
         if (count == _lastPasteboardChange) return;
         _lastPasteboardChange = count;
+        if (_sessionHoldsDrop)
+        {
+            // a new copy on the Mac replaces the dropped files there, even when it is what was copied before the drop
+            _sessionHoldsDrop = false;
+            _lastLocalClipboard = null;
+        }
         AppLog.Trace($"{Info.Name}: pasteboard changed (change count {count})");
         AsyncHelper.Fire(PushLocalClipboardAsync, "Clipboard");
     }
@@ -315,6 +326,62 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
         _lastLocalClipboard = text;
         var sent = Session.SetClipboardText(text);
         Notifications.Instance.Info($"{Info.Name}: Clipboard: {text.Length} characters from the Mac {(sent ? "announced to the session" : "kept until the channel is ready")}");
+    }
+
+    // ----- files dropped on the session -----
+
+    private string? FileDropRefusal()
+    {
+        if (Session is not { IsConnected: true } || State != TabState.Connected) return $"{Info.Name} is not connected";
+        if (ViewOnly) return "View-only: files cannot be dropped here";
+        if (!Info.GetEffective<bool>(nameof(ConnectionInfo.RedirectClipboard))) return "Clipboard redirection is off for this connection";
+        return null;
+    }
+
+    private void OnFileDragChanged(int count, string? refusal)
+    {
+        if (count == 0) _dropHint.Hide();
+        else _dropHint.Show(refusal ?? $"Drop to copy {(count == 1 ? "1 item" : $"{count} items")} to {Info.Name}", refusal is null);
+    }
+
+    /// <summary>Test mode: shows the hint as a drag of <paramref name="count"/> files would (0 hides it).</summary>
+    internal void DragHintForTest(int count) => OnFileDragChanged(count, count == 0 ? null : FileDropRefusal());
+
+    /// <summary>
+    /// Copies dropped files the way a user would: they go on the session's clipboard, the window under the drop is
+    /// clicked and Ctrl+V pastes them there, so Explorer or the desktop copies them from this Mac with its own progress.
+    /// </summary>
+    private async Task DropFilesAsync(IReadOnlyList<string> paths, int x, int y)
+    {
+        var refusal = FileDropRefusal();
+        if (refusal is not null || Session is not { } session)
+        {
+            Notifications.Instance.Warn($"{Info.Name}: Drop: {refusal ?? "not connected"}");
+            return;
+        }
+        var what = paths.Count == 1 ? Path.GetFileName(paths[0]) : $"{paths.Count} items";
+        var acks = session.ClipboardListAcks;
+        if (!session.SetClipboardFiles(paths))
+        {
+            Notifications.Instance.Warn($"{Info.Name}: Drop: the clipboard channel is not ready yet; {what} will be on the session's clipboard once it is");
+            return;
+        }
+        _sessionHoldsDrop = true;
+        AppLog.Trace($"{Info.Name}: dropped {string.Join(" | ", paths)} at {x},{y}");
+        // Windows must own the new clipboard before Ctrl+V arrives, or it pastes what it held before
+        var waited = System.Diagnostics.Stopwatch.StartNew();
+        while (session.ClipboardListAcks == acks)
+        {
+            if (!ReferenceEquals(Session, session) || !session.IsConnected) return;
+            if (waited.Elapsed > TimeSpan.FromSeconds(3))
+            {
+                Notifications.Instance.Warn($"{Info.Name}: Drop: the session did not confirm the clipboard; {what} is on it, paste with ⌘V where you want it");
+                return;
+            }
+            await Task.Delay(20).ConfigureAwait(true);
+        }
+        View.ClickAndPaste(x, y);
+        Notifications.Instance.Info($"{Info.Name}: Drop: {what} pasted where it was dropped; Windows copies it from this Mac");
     }
 
     // ----- files from the session -----

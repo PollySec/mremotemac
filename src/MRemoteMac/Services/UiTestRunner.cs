@@ -93,6 +93,8 @@ public sealed class UiTestRunner : IDisposable
             case "log": Log(arg); break;
             case "filetray": _main.CurrentTabForTest?.DemoFileTray(arg); break;
             case "clipfiles": _main.CurrentTabForTest?.Session?.SetClipboardFiles(arg.Split('\n')); break;
+            case "dropfiles": DropFiles(arg); break;
+            case "draghint": (_main.CurrentTabForTest ?? throw new InvalidOperationException("no session tab")).DragHintForTest(int.Parse(arg, CultureInfo.InvariantCulture)); break;
             case "exit": _main.ForceClose(); break;
             case "quit": _main.Close(); break;
             default: throw new InvalidOperationException($"unknown command {cmd}");
@@ -113,6 +115,15 @@ public sealed class UiTestRunner : IDisposable
         tree.TreeContainerFromItem(node)?.BringIntoView();
         await Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Loaded);
         Log($"  tree '{name}' selected={vm.SelectedNode?.Name} container={(tree.TreeContainerFromItem(node) is null ? "none" : "ok")}");
+    }
+
+    /// <summary>"x,y|path|path…": files dropped on the current session at a point of its view (a real drag cannot be scripted).</summary>
+    private void DropFiles(string arg)
+    {
+        var parts = arg.Split('|');
+        var xy = parts[0].Split(',');
+        var view = _main.CurrentTabForTest?.View ?? throw new InvalidOperationException("no session tab");
+        view.DropFiles(parts[1..], new Point(double.Parse(xy[0], CultureInfo.InvariantCulture), double.Parse(xy[1], CultureInfo.InvariantCulture)));
     }
 
     // ---------------- screenshots ----------------

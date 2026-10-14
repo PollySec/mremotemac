@@ -113,6 +113,9 @@ MRRDP_API int32_t mr_resize_desktop(mr_session* s, uint32_t width, uint32_t heig
 MRRDP_API int32_t mr_set_clipboard_text(mr_session* s, const char* utf8);
 /* announces local files (absolute paths, newline separated) to the session; replaces any announced text */
 MRRDP_API int32_t mr_set_clipboard_files(mr_session* s, const char* paths_newline_separated);
+/* number of format lists the session has accepted so far: it has taken ownership of the announced content once this
+ * grows (a paste typed before that may reach Windows while it still holds the old clipboard) */
+MRRDP_API int32_t mr_clipboard_list_acks(mr_session* s);
 /* downloads the files the session last offered into dest_dir (created); progress via callbacks. 0 = not started,
  * 1 = started, 2 = started and file promises for the items are on the Mac pasteboard; *promise_token then identifies
  * them for mr_promise_drag. items receives the top-level entries as "<f|d>\t<name>\n" lines (may be truncated).

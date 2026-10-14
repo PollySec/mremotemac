@@ -6,6 +6,8 @@
  *   CLIPSRV_CHUNK=<bytes>        request size used when fetching (default 262144, like rdpclip)
  *   CLIPSRV_TEXT=<text>          offer this text (CF_UNICODETEXT + CF_TEXT) once the client's first format list arrives
  *   CLIPSRV_PASTE=1              when the client announces text, lock and fetch it like a paste in Windows would
+ *   CLIPSRV_PASTE_KEY=1          with CLIPSRV_SAVE: fetch announced files only when the client types Ctrl+V, like
+ *                                Explorer; clicks are logged with their position
  */
 #include <freerdp/config.h>
 #include <winpr/assert.h>
@@ -35,6 +37,9 @@ typedef struct
 	UINT32 offer_count;
 	UINT32 max_request, delay_ms, chunk;
 	const char* save_dir;
+	int paste_key;
+	UINT32 announced_fgd; /* the client's FileGroupDescriptorW id while it announces files (paste_key mode) */
+	int ctrl_down;
 	int offered;
 	const char* text;
 	int paste_text;
@@ -130,6 +135,25 @@ static UINT on_client_caps(CliprdrServerContext* ctx, const CLIPRDR_CAPABILITIES
 
 static void dl_next(clip_state* st);
 
+/* lock the client's clipboard and ask for its file list, as Explorer does on paste */
+static void start_fetch(clip_state* st, UINT32 fgd)
+{
+	CliprdrServerContext* ctx = st->ctx;
+	if (ctx->canLockClipData)
+	{
+		CLIPRDR_LOCK_CLIPBOARD_DATA l = { 0 };
+		l.common.msgType = CB_LOCK_CLIPDATA;
+		l.clipDataId = ++st->lock_counter;
+		st->dl_lock = l.clipDataId;
+		st->dl_locked = ctx->ServerLockClipboardData(ctx, &l) == CHANNEL_RC_OK;
+	}
+	CLIPRDR_FORMAT_DATA_REQUEST req = { 0 };
+	req.common.msgType = CB_FORMAT_DATA_REQUEST;
+	req.requestedFormatId = fgd;
+	st->pending_format = fgd;
+	(void)ctx->ServerFormatDataRequest(ctx, &req);
+}
+
 static UINT on_client_format_list(CliprdrServerContext* ctx, const CLIPRDR_FORMAT_LIST* list)
 {
 	clip_state* st = ctx->custom;
@@ -163,22 +187,11 @@ static UINT on_client_format_list(CliprdrServerContext* ctx, const CLIPRDR_FORMA
 		st->pending_format = CF_UNICODETEXT;
 		(void)ctx->ServerFormatDataRequest(ctx, &req);
 	}
-	if (fgd && st->save_dir && !st->dl)
-	{
-		if (ctx->canLockClipData)
-		{
-			CLIPRDR_LOCK_CLIPBOARD_DATA l = { 0 };
-			l.common.msgType = CB_LOCK_CLIPDATA;
-			l.clipDataId = ++st->lock_counter;
-			st->dl_lock = l.clipDataId;
-			st->dl_locked = ctx->ServerLockClipboardData(ctx, &l) == CHANNEL_RC_OK;
-		}
-		CLIPRDR_FORMAT_DATA_REQUEST req = { 0 };
-		req.common.msgType = CB_FORMAT_DATA_REQUEST;
-		req.requestedFormatId = fgd;
-		st->pending_format = fgd;
-		(void)ctx->ServerFormatDataRequest(ctx, &req);
-	}
+	st->announced_fgd = fgd;
+	if (fgd && st->save_dir && st->paste_key)
+		fprintf(stderr, "[clipsrv] files announced, waiting for Ctrl+V\n");
+	else if (fgd && st->save_dir && !st->dl)
+		start_fetch(st, fgd);
 	if (st->offer_count && !st->offered)
 	{
 		st->offered = 1;
@@ -469,6 +482,8 @@ BOOL sf_peer_clip_init(testPeerContext* context)
 		st->text = v;
 	if ((v = getenv("CLIPSRV_PASTE")) && *v)
 		st->paste_text = atoi(v) != 0;
+	if ((v = getenv("CLIPSRV_PASTE_KEY")) && *v)
+		st->paste_key = atoi(v) != 0;
 	ctx->custom = st;
 	ctx->rdpcontext = &context->_p;
 	ctx->useLongFormatNames = TRUE;
@@ -488,6 +503,28 @@ BOOL sf_peer_clip_init(testPeerContext* context)
 	fprintf(stderr, "[clipsrv] clipboard channel up (offer %u entries, text %s, paste %d, max request %u, delay %u ms, save %s)\n",
 	        st->offer_count, st->text ? "yes" : "no", st->paste_text, st->max_request, st->delay_ms, st->save_dir ? st->save_dir : "-");
 	return ctx->Start(ctx) == CHANNEL_RC_OK;
+}
+
+void sf_peer_clip_key(testPeerContext* context, UINT16 flags, UINT8 code)
+{
+	if (!context->clip)
+		return;
+	clip_state* st = context->clip->custom;
+	int down = (flags & KBD_FLAGS_RELEASE) == 0;
+	if (code == RDP_SCANCODE_CODE(RDP_SCANCODE_LCONTROL))
+		st->ctrl_down = down;
+	else if (down && st->ctrl_down && code == RDP_SCANCODE_CODE(RDP_SCANCODE_KEY_V))
+	{
+		fprintf(stderr, "[clipsrv] Ctrl+V\n");
+		if (st->paste_key && st->save_dir && st->announced_fgd && !st->dl)
+			start_fetch(st, st->announced_fgd);
+	}
+}
+
+void sf_peer_clip_mouse(testPeerContext* context, UINT16 flags, UINT16 x, UINT16 y)
+{
+	if (context->clip && (flags & PTR_FLAGS_BUTTON1) && (flags & PTR_FLAGS_DOWN))
+		fprintf(stderr, "[clipsrv] click at %u,%u\n", (unsigned)x, (unsigned)y);
 }
 
 void sf_peer_clip_uninit(testPeerContext* context)

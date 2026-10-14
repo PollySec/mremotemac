@@ -25,6 +25,10 @@ def patch(p, pairs):
     open(p,'w').write(s)
 patch(f'{out}/sfreerdp.h',[("\tRdpsndServerContext* rdpsnd;","\tRdpsndServerContext* rdpsnd;\n\tstruct s_cliprdr_server_context* clip;")])
 patch(f'{out}/sfreerdp.c',[
+ ('\tWLog_DBG(TAG, "Client sent a keyboard event (flags:0x%04" PRIX16 " code:0x%04" PRIX8 ")", flags,\n\t         code);',
+  '\tWLog_DBG(TAG, "Client sent a keyboard event (flags:0x%04" PRIX16 " code:0x%04" PRIX8 ")", flags,\n\t         code);\n\tsf_peer_clip_key(tcontext, flags, code);'),
+ ('\tWLog_DBG(TAG, "Client sent a mouse event (flags:0x%04" PRIX16 " pos:%" PRIu16 ",%" PRIu16 ")",\n\t         flags, x, y);',
+  '\tWLog_DBG(TAG, "Client sent a mouse event (flags:0x%04" PRIX16 " pos:%" PRIu16 ",%" PRIu16 ")",\n\t         flags, x, y);\n\tsf_peer_clip_mouse((testPeerContext*)input->context, flags, x, y);'),
  ('#include "sf_encomsp.h"','#include "sf_encomsp.h"\n#include "sf_clip.h"\n#include <freerdp/channels/cliprdr.h>'),
  ("\t\tencomsp_server_context_free(context->encomsp);","\t\tencomsp_server_context_free(context->encomsp);\n\t\tsf_peer_clip_uninit(context);"),
  ("\t/* Dynamic Virtual Channels */","\tif (WTSVirtualChannelManagerIsChannelJoined(context->vcm, CLIPRDR_SVC_CHANNEL_NAME))\n\t{\n\t\tif (!sf_peer_clip_init(context))\n\t\t\treturn FALSE;\n\t}\n\n\t/* Dynamic Virtual Channels */"),

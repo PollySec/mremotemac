@@ -3,6 +3,16 @@
 All notable changes to mRemoteMac are documented here. The format follows [Keep a Changelog](https://keepachangelog.com)
 and versions follow [Semantic Versioning](https://semver.org) via git tags (MinVer).
 
+## [Unreleased]
+
+### Added
+- **Drop files from the Finder onto a session.** The session gets an accent outline and a "Drop to copy …" label
+  (or the reason it cannot take them: not connected, view-only, clipboard sharing off), and the remote pointer
+  follows the drag. On drop the files and folders go on the session's clipboard, the window under the drop is
+  clicked and Ctrl+V pastes them there, so Explorer or the desktop copies them from the Mac with its own progress
+  dialog. Dropping onto a folder icon pastes into the folder that is open, not into that icon. The paste waits until
+  Windows has confirmed the new clipboard, so it never pastes what was there before.
+
 ## [1.3.1] – 2026-10-13
 
 ### Changed

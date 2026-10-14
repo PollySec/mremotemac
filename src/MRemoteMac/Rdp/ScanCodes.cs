@@ -9,7 +9,7 @@ public static class ScanCodes
 
     public const uint LeftControl = 0x1D, RightControl = 0x1D | E, LeftAlt = 0x38, RightAlt = 0x38 | E;
     public const uint LeftShift = 0x2A, RightShift = 0x36, LeftWin = 0x5B | E, RightWin = 0x5C | E;
-    public const uint Delete = 0x53 | E, Escape = 0x01, Tab = 0x0F;
+    public const uint Delete = 0x53 | E, Escape = 0x01, Tab = 0x0F, V = 0x2F;
 
     private static readonly Dictionary<PhysicalKey, uint> Map = new()
     {

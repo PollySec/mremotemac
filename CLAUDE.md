@@ -8,7 +8,7 @@
   `Config/VaultHeader` + `Config/ConnectionStores`); XML stays import/export/alternative store. Both formats go through
   `ConnectionsFile.NodeAttributes` / `ReadAttributes` – never serialize a node any other way.
 - Clipboard testing without a Windows host: `tools/clipsrv/build.sh` builds FreeRDP's sample server with an rdpclip-like
-  file and text clipboard (`CLIPSRV_OFFER`, `CLIPSRV_TEXT`, `CLIPSRV_PASTE`, `CLIPSRV_DELAY_MS`, `CLIPSRV_MAX_REQUEST`, `CLIPSRV_SAVE`); run it from the sample's
+  file and text clipboard (`CLIPSRV_OFFER`, `CLIPSRV_TEXT`, `CLIPSRV_PASTE`, `CLIPSRV_PASTE_KEY`, `CLIPSRV_DELAY_MS`, `CLIPSRV_MAX_REQUEST`, `CLIPSRV_SAVE`); run it from the sample's
   source directory like sfreerdp-server. The download strategy is described at the end of `docs/performance.md`.
 - Performance: read `docs/performance.md` before touching the frame path; `MRM_FRAMEBENCH=WxH@fps[:dirty%]` (debug) measures it.
 - UI audit: debug builds accept `MRM_SCRIPT=<script> MRM_OUT=<dir> MRM_HOME=<settings dir>` (see `Services/UiTestRunner.cs`).
