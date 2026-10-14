@@ -3,7 +3,7 @@
 All notable changes to mRemoteMac are documented here. The format follows [Keep a Changelog](https://keepachangelog.com)
 and versions follow [Semantic Versioning](https://semver.org) via git tags (MinVer).
 
-## [Unreleased]
+## [1.4.0] – 2026-10-14
 
 ### Added
 - **Drop files from the Finder onto a session.** The session gets an accent outline and a "Drop to copy …" label
