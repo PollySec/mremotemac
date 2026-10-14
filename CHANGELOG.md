@@ -3,6 +3,14 @@
 All notable changes to mRemoteMac are documented here. The format follows [Keep a Changelog](https://keepachangelog.com)
 and versions follow [Semantic Versioning](https://semver.org) via git tags (MinVer).
 
+## [Unreleased]
+
+### Fixed
+- The downloads built by CI (1.0.0 and 1.1.0–1.4.0) linked Homebrew's json-c from the build machine, so on a Mac
+  without it the native library failed to load and the app started with an empty connection tree (the database
+  itself was untouched). FreeRDP is now built without JSON support, as local builds always were, and packaging
+  refuses an app that links anything outside the bundle and macOS. The 1.4.0 download has been replaced.
+
 ## [1.4.0] – 2026-10-14
 
 ### Added

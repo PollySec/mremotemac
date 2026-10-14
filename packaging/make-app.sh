@@ -27,6 +27,18 @@ cp -R $DIST/publish/. $APP/Contents/MacOS/
 rm -rf $APP/Contents/MacOS/*.dSYM   # debug symbols stay in dist/publish, not in the app
 # drop local symbols from the native libraries (exported symbols stay, so dlsym/LibraryImport are unaffected)
 for f in $APP/Contents/MacOS/*.dylib; do strip -x "$f"; done
+# Every library must come from the bundle or from macOS. A Homebrew path (json-c on the CI runner once) loads on the
+# build machine and nowhere else, so the app would start without its connections on every other Mac.
+LEAKS=$(for f in $APP/Contents/MacOS/mRemoteMac $APP/Contents/MacOS/*.dylib; do
+  self=$(otool -arch arm64 -D "$f" | tail -n +2)
+  otool -arch arm64 -L "$f" | tail -n +2 | awk '{print $1}' | while read -r dep; do
+    case $dep in /usr/lib/*|/System/*|@rpath/*|@loader_path/*|@executable_path/*|"$self") ;; *) echo "  ${f:t} -> $dep" ;; esac
+  done
+done)
+if [ -n "$LEAKS" ]; then
+  echo "error: libraries outside the app bundle and macOS:\n$LEAKS" >&2
+  exit 1
+fi
 sed -e "s/__VERSION__/${VERSION%%[+-]*}/; s/__BUILD__/$BUILD/" $ROOT/packaging/Info.plist > $APP/Contents/Info.plist
 
 # icon: .icns from the 1024px app icon
