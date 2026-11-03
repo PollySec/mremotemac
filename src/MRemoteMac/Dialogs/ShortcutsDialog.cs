@@ -9,7 +9,17 @@ namespace MRemoteMac.Dialogs;
 /// <summary>Help ▸ Keyboard Shortcuts.</summary>
 public static class ShortcutsDialog
 {
-    private static readonly (string Group, (string Keys, string Action)[] Items)[] Groups =
+    private static readonly (string Group, (string Keys, string Action)[] Items)[] Groups = Services.Platform.IsWindows ? WindowsGroups() : MacGroups();
+
+    private static (string Group, (string Keys, string Action)[] Items)[] WindowsGroups() =>
+    [
+        ("Connections", [("Enter / double-click", "Connect"), ("Ctrl+Shift+C", "Connect (tree)"), ("Ctrl+D", "Duplicate"), ("F2", "Rename"), ("Del", "Delete"), ("Ctrl+↑ / Ctrl+↓", "Move up / down"), ("Ctrl+F", "Search")]),
+        ("Sessions", [("Ctrl+← / Ctrl+→", "Previous / next session"), ("Ctrl+1 … Ctrl+9", "Jump to session"), ("Ctrl+W", "Disconnect current session"), ("F11", "Fullscreen")]),
+        ("Inside a session", [("Ctrl, Alt, …", "Go to the session"), ("Win, Alt+Tab", "Stay on this PC; the tab menu sends them"), ("Tab menu ▸ Send special keys", "Ctrl+Alt+Del, Ctrl+Esc, Win, Alt+Tab")]),
+        ("Files", [("Ctrl+O", "Open connection file"), ("Ctrl+S", "Save"), ("Ctrl+Shift+S", "Save as"), ("Ctrl+,", "Options"), ("Alt+F4", "Exit")]),
+    ];
+
+    private static (string Group, (string Keys, string Action)[] Items)[] MacGroups() =>
     [
         ("Connections", [("⏎ / double-click", "Connect"), ("⇧⌘C", "Connect (tree)"), ("⌘D", "Duplicate"), ("F2", "Rename"), ("⌫ / Del", "Delete"), ("⌘↑ / ⌘↓", "Move up / down"), ("⌘F", "Search")]),
         ("Sessions", [("⌘← / ⌘→", "Previous / next session"), ("⌘1 … ⌘9", "Jump to session"), ("⌘W", "Disconnect current session"), ("F11", "Fullscreen")]),
@@ -29,7 +39,7 @@ public static class ShortcutsDialog
             for (var i = 0; i < items.Length; i++)
             {
                 grid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
-                var keys = new TextBlock { Text = items[i].Keys, FontFamily = new FontFamily("Menlo, Monaco, monospace"), FontSize = 12, Margin = new Thickness(0, 3) };
+                var keys = new TextBlock { Text = items[i].Keys, FontFamily = new FontFamily("Menlo, Consolas, monospace"), FontSize = 12, Margin = new Thickness(0, 3) };
                 var action = new TextBlock { Text = items[i].Action, Margin = new Thickness(8, 3, 0, 3) };
                 action.Classes.Add("secondary");
                 Grid.SetRow(keys, i); Grid.SetRow(action, i); Grid.SetColumn(action, 1);

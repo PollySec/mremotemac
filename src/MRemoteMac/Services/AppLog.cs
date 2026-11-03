@@ -3,13 +3,12 @@ using System.Text;
 namespace MRemoteMac.Services;
 
 /// <summary>
-/// Plain-text log at ~/Library/Logs/mRemoteMac/mRemoteMac.log. Every notification goes here, plus trace lines (FreeRDP's
+/// Plain-text log at ~/Library/Logs/mRemoteMac/mRemoteMac.log (%LOCALAPPDATA%\mRemoteMac\Logs on Windows). Every notification goes here, plus trace lines (FreeRDP's
 /// clipboard diagnostics, pasteboard polling) that are too detailed for the Notifications panel. Rotated once at 5 MB.
 /// </summary>
 public static class AppLog
 {
-    public static string Path { get; } = System.IO.Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Library", "Logs", "mRemoteMac", "mRemoteMac.log");
+    public static string Path { get; } = System.IO.Path.Combine(Platform.LogDirectory, "mRemoteMac.log");
 
     private const long RotateAt = 5 * 1024 * 1024;
     private static readonly Lock Gate = new();

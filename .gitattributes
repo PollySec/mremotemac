@@ -1,0 +1,2 @@
+# applied to FreeRDP's LF sources with git apply
+*.patch -text

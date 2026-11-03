@@ -63,3 +63,56 @@ jobs:
             dist/*.zip
             dist/*.dmg
           generate_release_notes: false
+
+  # Builds and tests Windows on every push, but never uploads to a release: the MSIs in a release are signed
+  # (packaging/windows/sign.ps1) and a job here would replace them.
+  windows:
+    name: Build, test and package (Windows ${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x64, os: windows-2025 }
+          - { arch: arm64, os: windows-11-arm }
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # MinVer needs the tags
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Cache native dependencies (OpenSSL, FreeRDP)
+        id: deps
+        uses: actions/cache@v4
+        with:
+          path: ../mRemoteMac-deps-win
+          key: deps-${{ runner.os }}-${{ matrix.arch }}-${{ hashFiles('native/build-deps-win.ps1', 'native/freerdp-windows.patch') }}
+
+      - name: Build native dependencies
+        if: steps.deps.outputs.cache-hit != 'true'
+        run: ./native/build-deps-win.ps1 -Arch ${{ matrix.arch }}
+
+      - name: Build native shim
+        run: ./native/build-win.ps1 -Arch ${{ matrix.arch }}
+
+      - name: Build (warnings are errors)
+        run: dotnet build src/MRemoteMac -c Release -r win-${{ matrix.arch }} -warnaserror
+
+      - name: Test
+        run: dotnet test tests/MRemoteMac.Tests -c Release -r win-${{ matrix.arch }}
+
+      - name: Package app and unsigned MSI
+        run: |
+          ./packaging/windows/make-msi.ps1 -Arch ${{ matrix.arch }} -Step Publish
+          ./packaging/windows/make-msi.ps1 -Arch ${{ matrix.arch }} -Step Package
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mRemoteMac-windows-${{ matrix.arch }}-unsigned
+          path: dist/*.msi

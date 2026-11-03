@@ -1,0 +1,37 @@
+<!-- mRemoteMac for Windows: built by packaging/windows/make-msi.ps1. The UpgradeCode must never change. -->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <Package Name="mRemoteMac" Manufacturer="PollySec Labs AB" Version="$(var.Version)"
+           UpgradeCode="6E0B6C1D-5A4F-4C7E-9D0B-3B2E7A1F4C58" Scope="perMachine" Compressed="yes" InstallerVersion="500">
+    <SummaryInformation Description="mRemoteMac $(var.Version) installer" Manufacturer="PollySec Labs AB" />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of mRemoteMac is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <Icon Id="mRemoteMac.ico" SourceFile="$(sys.SOURCEFILEDIR)mRemoteMac.ico" />
+    <Property Id="ARPPRODUCTICON" Value="mRemoteMac.ico" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/PollySec/mremotemac" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/PollySec/mremotemac/issues" />
+
+    <StandardDirectory Id="ProgramFiles6432Folder">
+      <Directory Id="INSTALLFOLDER" Name="mRemoteMac" />
+    </StandardDirectory>
+
+    <ComponentGroup Id="App" Directory="INSTALLFOLDER">
+      <Component>
+        <File Source="!(bindpath.app)\mRemoteMac.exe" KeyPath="yes">
+          <Shortcut Id="StartMenuShortcut" Directory="ProgramMenuFolder" Name="mRemoteMac" Description="RDP connection manager"
+                    WorkingDirectory="INSTALLFOLDER" Icon="mRemoteMac.ico" Advertise="yes" />
+        </File>
+      </Component>
+      <Files Include="!(bindpath.app)\**">
+        <Exclude Files="!(bindpath.app)\mRemoteMac.exe" />
+      </Files>
+    </ComponentGroup>
+
+    <Feature Id="Main">
+      <ComponentGroupRef Id="App" />
+    </Feature>
+
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <WixVariable Id="WixUILicenseRtf" Value="$(var.LicenseRtf)" />
+  </Package>
+</Wix>

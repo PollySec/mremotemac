@@ -1,0 +1,23 @@
+--- a/client/common/client_cliprdr_file.c	2026-11-03 13:49:48
++++ b/client/common/client_cliprdr_file.c	2026-11-03 13:49:48
+@@ -2230,7 +2230,7 @@
+ 		return FALSE;
+ 
+ 	HANDLE hFile = CreateFileW(wpath, 0, FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+-	                           FILE_ATTRIBUTE_NORMAL, nullptr);
++	                           FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+ 	free(wpath);
+ 
+ 	if (hFile == INVALID_HANDLE_VALUE)
+@@ -2329,6 +2329,11 @@
+ 			cname = &ptr[7];
+ 		else if (strncmp("file:/", ptr, 6) == 0)
+ 			cname = &ptr[5];
++#if defined(_WIN32)
++		/* file:///C:/dir names C:/dir, not /C:/dir */
++		if ((cname[0] == '/') && (cname[1] != '\0') && (cname[2] == ':'))
++			cname++;
++#endif
+ 
+ 		const size_t nlen = strnlen(cname, size);
+ 		free(dname);

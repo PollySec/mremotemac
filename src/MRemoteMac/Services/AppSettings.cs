@@ -8,7 +8,7 @@ public sealed class AppSettings
 {
     public static string Directory { get; } = Environment.GetEnvironmentVariable("MRM_HOME") is { Length: > 0 } home
         ? home
-        : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Library", "Application Support", "mRemoteMac");
+        : Platform.DataDirectory;
 
     /// <summary>Legacy XML location (1.0.x); still honoured when it exists and no database has been created.</summary>
     public static string DefaultConnectionsPath => Path.Combine(Directory, "confCons.xml");
@@ -30,8 +30,8 @@ public sealed class AppSettings
     public bool StaticWhileConnecting { get; set; } = true;
     /// <summary>Files copied in a session are fetched automatically up to this many MB; above it the user is asked.</summary>
     public int ClipboardFilesAutoFetchMB { get; set; } = 256;
-    /// <summary>Where files from sessions land before they are put on the Mac clipboard.</summary>
-    public static string ClipboardCacheDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Library", "Caches", "mRemoteMac", "clipboard");
+    /// <summary>Where files from sessions land before they are put on the local clipboard.</summary>
+    public static string ClipboardCacheDirectory => Path.Combine(Platform.CacheDirectory, "clipboard");
     public string QuickConnectProtocol { get; set; } = "RDP";
     public List<string> QuickConnectHistory { get; set; } = new();
     public double TreePaneWidth { get; set; } = 300;

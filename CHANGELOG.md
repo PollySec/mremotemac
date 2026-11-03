@@ -5,7 +5,18 @@ and versions follow [Semantic Versioning](https://semver.org) via git tags (MinV
 
 ## [Unreleased]
 
+### Added
+- **Windows.** mRemoteMac now also runs on Windows 10 and newer, x64 and Arm64, as a signed MSI that needs no .NET or
+  Visual C++ runtime. Connections, revision history, clipboard text and files in both directions and dropping files
+  onto a session all work as on the Mac. Settings and the database live in `%LOCALAPPDATA%\mRemoteMac`, and the database
+  key in Windows Credential Manager, which unlike the keychain does not tie the key to this app; a master password
+  protects against other programs running as you (see docs/storage.md). The app's shortcuts use Ctrl. The Win key and
+  Alt+Tab stay on your PC, and the tab menu sends them. A file copied in a session reaches the clipboard when it is
+  complete, because there is no card to drag from while it is coming in.
+
 ### Fixed
+- Alt (Option on the Mac) pressed inside a session also opened the app's own menu bar, which took the keyboard away
+  from the session.
 - The downloads built by CI (1.0.0 and 1.1.0–1.4.0) linked Homebrew's json-c from the build machine, so on a Mac
   without it the native library failed to load and the app started with an empty connection tree (the database
   itself was untouched). FreeRDP is now built without JSON support, as local builds always were, and packaging

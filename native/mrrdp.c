@@ -1,7 +1,6 @@
 /* mrrdp - thin C shim around libfreerdp-client. See mrrdp.h. */
 #include "mrrdp.h"
 
-#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -31,15 +30,10 @@
 #include <winpr/clipboard.h>
 #include <winpr/shell.h>
 #include <winpr/wlog.h>
-#include <fcntl.h>
-#include <unistd.h>
+#include "plat.h"
 
 #define MR_CLIP_WINDOW 4 /* File Contents Requests kept in flight while downloading */
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <errno.h>
 #include <winpr/clipboard.h>
-#include <mach/mach_time.h>
 
 #define MR_RESIZE_MIN_INTERVAL_MS 500 /* like sdl-freerdp / xfreerdp */
 
@@ -127,10 +121,7 @@ const char* mr_version(void)
 
 static uint64_t mr_now_ms(void)
 {
-	static mach_timebase_info_data_t tb;
-	if (tb.denom == 0)
-		mach_timebase_info(&tb);
-	return mach_absolute_time() * tb.numer / tb.denom / 1000000ULL;
+	return plat_now_ms();
 }
 
 /* ---------- painting ---------- */
@@ -510,7 +501,7 @@ static void dl_reset(mr_session* s)
 	if (s->dl.promise)
 		mr_promise_complete(s->dl.promise, "the transfer was cancelled");
 	if (s->dl.fd >= 0)
-		close(s->dl.fd);
+		plat_close(s->dl.fd);
 	free(s->dl.cur_path);
 	free(s->dl.dest);
 	memset(&s->dl, 0, sizeof(s->dl));
@@ -550,7 +541,8 @@ static char* dl_relative_path(const FILEDESCRIPTORW* fd)
 		if (*q == '\\')
 			*q = '/';
 	const size_t nlen = strlen(name);
-	if (name[0] == '/' || strstr(name, "../") || strcmp(name, "..") == 0 || (nlen >= 3 && strcmp(name + nlen - 3, "/..") == 0))
+	if (name[0] == '/' || strstr(name, "../") || strcmp(name, "..") == 0 || (nlen >= 3 && strcmp(name + nlen - 3, "/..") == 0) ||
+	    !plat_is_safe_relative_path(name))
 	{
 		free(name);
 		return NULL;
@@ -560,25 +552,7 @@ static char* dl_relative_path(const FILEDESCRIPTORW* fd)
 
 static int dl_mkdirs(const char* path)
 {
-	char* copy = _strdup(path);
-	if (!copy)
-		return 0;
-	for (char* q = copy + 1; *q; q++)
-	{
-		if (*q == '/')
-		{
-			*q = 0;
-			if (mkdir(copy, 0700) != 0 && errno != EEXIST)
-			{
-				free(copy);
-				return 0;
-			}
-			*q = '/';
-		}
-	}
-	int ok = mkdir(copy, 0700) == 0 || errno == EEXIST;
-	free(copy);
-	return ok;
+	return plat_mkdirs(path);
 }
 
 static int dl_inflight_count(const mr_session* s)
@@ -702,7 +676,7 @@ static void dl_next_file(mr_session* s)
 			}
 			*slash = '/';
 		}
-		s->dl.fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+		s->dl.fd = plat_create_file(path);
 		if (s->dl.fd < 0)
 		{
 			free(path);
@@ -733,24 +707,12 @@ static void dl_close_current(mr_session* s)
 {
 	if (s->dl.fd >= 0)
 	{
-		close(s->dl.fd);
+		plat_close(s->dl.fd);
 		s->dl.fd = -1;
 	}
 	const FILEDESCRIPTORW* fd = s->dl.index < s->remote_file_count ? &s->remote_files[s->dl.index] : NULL;
 	if (fd && s->dl.cur_path && (fd->dwFlags & FD_WRITESTIME))
-	{
-		/* FILETIME: 100 ns ticks since 1601-01-01 -> Unix seconds */
-		const UINT64 ft = ((UINT64)fd->ftLastWriteTime.dwHighDateTime << 32) | fd->ftLastWriteTime.dwLowDateTime;
-		if (ft > 116444736000000000ULL)
-		{
-			const UINT64 unix_ns100 = ft - 116444736000000000ULL;
-			struct timespec ts[2];
-			ts[0].tv_sec = (time_t)(unix_ns100 / 10000000ULL);
-			ts[0].tv_nsec = (long)((unix_ns100 % 10000000ULL) * 100);
-			ts[1] = ts[0];
-			(void)utimensat(AT_FDCWD, s->dl.cur_path, ts, 0);
-		}
-	}
+		plat_set_write_time(s->dl.cur_path, ((UINT64)fd->ftLastWriteTime.dwHighDateTime << 32) | fd->ftLastWriteTime.dwLowDateTime);
 	free(s->dl.cur_path);
 	s->dl.cur_path = NULL;
 }
@@ -851,7 +813,7 @@ static UINT mr_cliprdr_server_file_contents_response(CliprdrClientContext* ctx,
 		UINT32 left = n;
 		while (left > 0)
 		{
-			ssize_t w = pwrite(s->dl.fd, p, left, (off_t)at);
+			const int64_t w = plat_pwrite(s->dl.fd, p, left, at);
 			if (w <= 0)
 			{
 				dl_finish(s, "could not write the file (disk full?)");
@@ -1327,10 +1289,22 @@ static char* uri_list_from_paths(const char* paths)
 		{
 			if (!uri_append(&out, &cap, &len, "file://"))
 				goto fail;
+#ifdef _WIN32
+			/* C:\dir\file becomes file:///C:/dir/file and \\server\share becomes file:////server/share */
+			if (plen >= 2 && p[1] == ':' && !uri_append(&out, &cap, &len, "/"))
+				goto fail;
+#endif
 			for (size_t i = 0; i < plen; i++)
 			{
 				unsigned char c = (unsigned char)p[i];
 				char enc[4];
+#ifdef _WIN32
+				if (c == '\\')
+					c = '/';
+				if (c == ':')
+					snprintf(enc, sizeof(enc), "%c", c);
+				else
+#endif
 				if (isalnum(c) || c == '/' || c == '-' || c == '_' || c == '.' || c == '~')
 					snprintf(enc, sizeof(enc), "%c", c);
 				else
@@ -1685,6 +1659,7 @@ void mr_session_destroy(mr_session* s);
 
 mr_session* mr_session_create(const mr_callbacks* callbacks)
 {
+	plat_init_process();
 	mr_session* s = calloc(1, sizeof(mr_session));
 	if (!s)
 		return NULL;

@@ -104,8 +104,8 @@ public static class ConnectionStores
         if (header.Mode == VaultHeader.KeychainMode)
         {
             var kek = Keys.Read(path, header.KeychainAccount) ?? throw new InvalidOperationException(
-                $"The key that unlocks {name} is not in this Mac's login keychain (item {header.KeychainAccount}). " +
-                "A vault created on another Mac, or whose keychain item was deleted, can only be opened after a master password was set on it.");
+                $"The key that unlocks {name} is not in {Platform.KeyStoreName} on this computer (item {header.KeychainAccount}). " +
+                "A vault created on another computer, or whose key was deleted, can only be opened after a master password was set on it.");
             try
             {
                 var dataKey = header.UnwrapWithKeychainKey(kek);

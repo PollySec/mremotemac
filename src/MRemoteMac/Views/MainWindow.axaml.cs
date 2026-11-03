@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -20,6 +19,21 @@ namespace MRemoteMac.Views;
 
 public sealed partial class MainWindow : Window
 {
+    static MainWindow()
+    {
+        // A class handler runs before the window's own handlers, where Avalonia's access keys live (see RouteAltToSession).
+        KeyDownEvent.AddClassHandler<MainWindow>((w, e) => w.RouteAltToSession(e, true), RoutingStrategies.Tunnel);
+        KeyUpEvent.AddClassHandler<MainWindow>((w, e) => w.RouteAltToSession(e, false), RoutingStrategies.Tunnel);
+    }
+
+    /// <summary>Alt belongs to the session while it has focus; the access keys would open the menu bar and take the focus.</summary>
+    private void RouteAltToSession(KeyEventArgs e, bool down)
+    {
+        if (e.Key is not (Key.LeftAlt or Key.RightAlt) || FocusManager?.GetFocusedElement() is not Rdp.RdpView view) return;
+        view.ForwardKey(e, down);
+        e.Handled = true;
+    }
+
     private static readonly FilePickerFileType ConnectionFileType = new("mRemoteNG connection file") { Patterns = ["*.xml"] };
     private static readonly FilePickerFileType DatabaseFileType = new("mRemoteMac connection database") { Patterns = ["*.db"] };
 
@@ -89,9 +103,20 @@ public sealed partial class MainWindow : Window
             var index = i - 1;
             KeyBindings.Add(new KeyBinding
             {
-                Gesture = new KeyGesture(Key.D0 + i, KeyModifiers.Meta),
+                Gesture = new KeyGesture(Key.D0 + i, Platform.CommandModifier),
                 Command = new RelaySimpleCommand(() => { if (index < Tabs.Items.Count) Tabs.SelectedIndex = index; })
             });
+        }
+
+        Platform.AdaptMenuGestures(MainMenu.Items);
+        if (Tree.ContextMenu is { } treeMenu) Platform.AdaptMenuGestures(treeMenu.Items);
+        if (Platform.IsWindows)
+        {
+            // on the Mac the application menu handles these two
+            MiOptions.HotKey = MiOptions.InputGesture;
+            MiQuit.Header = "E_xit";
+            MiQuit.InputGesture = new KeyGesture(Key.F4, KeyModifiers.Alt);
+            MiRevealFile.Header = "Show Connection File in File Explorer";
         }
 
         // Cmd+Up/Down must win over the TreeView's own Up/Down navigation, so intercept them while tunnelling
@@ -493,13 +518,13 @@ public sealed partial class MainWindow : Window
     {
         if (_vm.Store is SqliteConnectionStore db)
         {
-            var pw = await Dialogs.Dialogs.Password(this, "Set a master password for the connection database. Leave empty to protect it with a key in your login keychain instead (no prompt at start).", "Master password", confirm: true);
+            var pw = await Dialogs.Dialogs.Password(this, $"Set a master password for the connection database. Leave empty to protect it with a key in {Platform.KeyStoreName} instead (no prompt at start).", "Master password", confirm: true);
             if (pw is null) return;
             try
             {
                 SaveIfDirty();
                 await ConnectionStores.SetMasterPasswordAsync(db, pw);
-                Notifications.Instance.Info(db.HasMasterPassword ? "Master password set: it is asked for at start." : "Master password removed: the database key is in your keychain.");
+                Notifications.Instance.Info(db.HasMasterPassword ? "Master password set: it is asked for at start." : "Master password removed: the database key is in " + Platform.KeyStoreName + ".");
             }
             catch (Exception ex) when (IsStoreError(ex))
             {
@@ -532,7 +557,7 @@ public sealed partial class MainWindow : Window
     private void OnOpenFileFolder(object? sender, RoutedEventArgs e)
     {
         var dir = Path.GetDirectoryName(_vm.FilePath ?? AppSettings.DefaultDatabasePath);
-        if (dir is not null && Directory.Exists(dir)) Process.Start(new ProcessStartInfo("open", dir) { UseShellExecute = false });
+        if (dir is not null && Directory.Exists(dir)) Platform.Open(dir);
     }
 
     private void OnImportFile(object? sender, RoutedEventArgs e) => AsyncHelper.Fire(ImportFileAsync, "Import");
@@ -613,7 +638,7 @@ public sealed partial class MainWindow : Window
     private void OnTreeKeyDown(object? sender, KeyEventArgs e)
     {
         if (Selected is null) return;
-        var cmd = e.KeyModifiers.HasFlag(KeyModifiers.Meta);
+        var cmd = e.KeyModifiers.HasFlag(Platform.CommandModifier);
         switch (e.Key)
         {
             case Key.Enter when !Selected.IsContainer: AsyncHelper.Fire(() => OpenConnectionAsync(Selected), "Connect"); e.Handled = true; break;
@@ -639,7 +664,7 @@ public sealed partial class MainWindow : Window
 
     private void OnTreeKeyDownTunnel(object? sender, KeyEventArgs e)
     {
-        if (!e.KeyModifiers.HasFlag(KeyModifiers.Meta) || Selected is null) return;
+        if (!e.KeyModifiers.HasFlag(Platform.CommandModifier) || Selected is null) return;
         switch (e.Key)
         {
             case Key.Up: OnMoveUp(sender, e); e.Handled = true; break;
@@ -655,7 +680,7 @@ public sealed partial class MainWindow : Window
         var focused = FocusManager?.GetFocusedElement() as Control;
         if (focused is TextBox or AutoCompleteBox or Rdp.RdpView or ComboBox) return;
         if (focused is not null && focused.FindAncestorOfType<TabControl>() == Tabs) return;
-        if (e.Key is Key.F2 or Key.Delete or Key.Back || (e.KeyModifiers.HasFlag(KeyModifiers.Meta) && e.Key is Key.D or Key.Up or Key.Down or Key.F))
+        if (e.Key is Key.F2 or Key.Delete or Key.Back || (e.KeyModifiers.HasFlag(Platform.CommandModifier) && e.Key is Key.D or Key.Up or Key.Down or Key.F))
             OnTreeKeyDown(Tree, e);
     }
 
@@ -1204,7 +1229,7 @@ public sealed partial class MainWindow : Window
     // ------------------------------------------------------------------ help
 
     private const string ProjectUrl = "https://github.com/PollySec/mremotemac";
-    private static void OpenUrl(string url) => Process.Start(new ProcessStartInfo("open", url) { UseShellExecute = false });
+    private static void OpenUrl(string url) => Platform.Open(url);
     private void OnShortcuts(object? sender, RoutedEventArgs e) => AsyncHelper.Fire(() => ShortcutsDialog.Show(this), "Shortcuts");
     private void OnHelp(object? sender, RoutedEventArgs e) => OpenUrl(ProjectUrl + "#using-it");
     private void OnWebsite(object? sender, RoutedEventArgs e) => OpenUrl(ProjectUrl);
@@ -1213,7 +1238,7 @@ public sealed partial class MainWindow : Window
     {
         var dir = Path.GetDirectoryName(CrashLog.Path)!;
         Directory.CreateDirectory(dir);
-        Process.Start(new ProcessStartInfo("open", dir) { UseShellExecute = false });
+        Platform.Open(dir);
     }
     private void OnAbout(object? sender, RoutedEventArgs e) => AsyncHelper.Fire(() => Dialogs.Dialogs.About(this), "About");
 

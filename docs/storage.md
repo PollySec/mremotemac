@@ -20,7 +20,7 @@ data key (32 random bytes)  ──encrypts──▶  connections.db pages
         ▲
         │ AES-256-GCM wrap (nonce, tag, AAD "mRemoteMac vault v1"), stored in connections.db.vault
         │
-key-encryption key ◀── keychain mode: 32 random bytes in the login keychain (no prompt at start)
+key-encryption key ◀── keychain mode: 32 random bytes in the login keychain, or Windows Credential Manager (no prompt at start)
                    ◀── password mode: PBKDF2-HMAC-SHA256, 600 000 rounds, 16-byte salt from the header
 ```
 
@@ -28,9 +28,9 @@ Changing the master password or switching modes re-wraps the data key only; the 
 A wrong password is detected by the GCM tag before SQLite is touched. The database engine gets the raw key
 (`PRAGMA key = "x'…'"`), so no second KDF runs on every open.
 
-Moving the vault to another Mac: set a master password first (File ▸ Set Master Password…), then copy both
-`connections.db` and `connections.db.vault`. A keychain-mode vault can only be unlocked on the Mac that holds its
-keychain item. Export to mRemoteNG XML is always available as the portable format.
+Moving the vault to another computer, also between Mac and Windows: set a master password first (File ▸ Set Master
+Password…), then copy both `connections.db` and `connections.db.vault`. A keychain-mode vault can only be unlocked on
+the computer that holds its key. Export to mRemoteNG XML is always available as the portable format.
 
 ## History
 
@@ -65,6 +65,18 @@ mRemoteMac may use the item ("Always Allow" whitelists that build). Release buil
 (`CODESIGN_IDENTITY` in `packaging/make-app.sh`) do not have this problem. The scripted UI audit uses a key file
 instead of the keychain so it can run unattended; that path is only taken in test mode together with an isolated
 `MRM_HOME` profile, never for the user's real data.
+
+## Windows
+
+The files are in `%LOCALAPPDATA%\mRemoteMac` (local, not roaming, because the key stays on this PC). The key-encryption
+key is a generic credential named `com.pollysec.mremotemac/vault:<id>` in Windows Credential Manager, encrypted for the
+signed-in user and kept on this PC. The vault header calls this mode `keychain` on both platforms, so one file format
+serves both.
+
+This is weaker than the Mac in one way: a keychain item is tied to the signature of the app that created it, a
+credential is not, so **any program running as the same user can read it** and with it open the database. Files of
+another user, or a stolen disk without the Windows login, stay protected. A master password closes the gap: then the
+key is only in memory while the app runs, at the price of a prompt at start.
 
 ## Upgrading from 1.0.x
 

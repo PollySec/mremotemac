@@ -52,7 +52,7 @@ public partial class ConnectionInfo : ObservableObject
     [ObservableProperty] private bool _useCredSsp = true;
     [property: Category("Protocol"), DisplayName("Use Restricted Admin"), Description("Restricted Admin mode: the password never reaches the host (needs admin rights there).")]
     [ObservableProperty] private bool _useRestrictedAdmin;
-    [property: Category("Protocol"), DisplayName("Use Remote Credential Guard"), Description("Remote Credential Guard: credentials stay on this Mac (Kerberos environments only).")]
+    [property: Category("Protocol"), DisplayName("Use Remote Credential Guard"), Description("Remote Credential Guard: credentials stay on this computer (Kerberos environments only).")]
     [ObservableProperty] private bool _useRCG;
     [property: Category("Protocol"), DisplayName("Minutes To Idle Timeout"), Description("Disconnect after this many minutes without mouse or keyboard input in the session. 0 = never.")]
     [ObservableProperty] private int _rdpMinutesToIdleTimeout;
@@ -116,11 +116,11 @@ public partial class ConnectionInfo : ObservableObject
     [ObservableProperty] private ConnectionFrameColor _connectionFrameColor = ConnectionFrameColor.None;
 
     // ----- Redirect -----
-    [property: Category("Redirect"), DisplayName("Disk Drives"), Description("Share Mac folders as drives in the session: Local / All share your home folder and /Volumes, Custom the paths below.")]
+    [property: Category("Redirect"), DisplayName("Disk Drives"), Description("Share folders from this computer as drives in the session: Local shares your home folder (and /Volumes on a Mac), All also every fixed drive on Windows, Custom the paths below.")]
     [ObservableProperty] private RdpDiskDrives _redirectDiskDrives = RdpDiskDrives.None;
     [property: Category("Redirect"), DisplayName("Disk Drives (custom)"), Description("Folders to share when Disk Drives is Custom, separated by ; (~ is your home folder).")]
     [ObservableProperty] private string _redirectDiskDrivesCustom = "";
-    [property: Category("Redirect"), DisplayName("Printers"), Description("Make the Mac printers available in the session.")]
+    [property: Category("Redirect"), DisplayName("Printers"), Description("Make this computer's printers available in the session.")]
     [ObservableProperty] private bool _redirectPrinters;
     [property: Category("Redirect"), DisplayName("Clipboard"), Description("Share the clipboard (text and files) in both directions.")]
     [ObservableProperty] private bool _redirectClipboard = true; // what people expect from a desktop RDP client
@@ -128,11 +128,11 @@ public partial class ConnectionInfo : ObservableObject
     [ObservableProperty] private bool _redirectPorts;
     [property: Category("Redirect"), DisplayName("Smart Cards"), Description("Redirect smart card readers for logon and applications.")]
     [ObservableProperty] private bool _redirectSmartCards;
-    [property: Category("Redirect"), DisplayName("Sounds"), Description("Play remote audio on this Mac, leave it on the remote computer, or mute it.")]
+    [property: Category("Redirect"), DisplayName("Sounds"), Description("Play remote audio on this computer, leave it on the remote computer, or mute it.")]
     [ObservableProperty] private RdpSounds _redirectSound = RdpSounds.DoNotPlay;
-    [property: Category("Redirect"), DisplayName("Sound Quality"), Description("Audio quality when sound is brought to this Mac: Dynamic adapts to the link, Medium, High.")]
+    [property: Category("Redirect"), DisplayName("Sound Quality"), Description("Audio quality when sound is brought to this computer: Dynamic adapts to the link, Medium, High.")]
     [ObservableProperty] private RdpSoundQuality _soundQuality = RdpSoundQuality.Dynamic;
-    [property: Category("Redirect"), DisplayName("Audio Capture"), Description("Send the Mac microphone to the session.")]
+    [property: Category("Redirect"), DisplayName("Audio Capture"), Description("Send this computer's microphone to the session.")]
     [ObservableProperty] private bool _redirectAudioCapture;
     [property: Category("Redirect"), DisplayName("Key Combinations"), Browsable(false)] // kept in the file for mRemoteNG, no equivalent here
     [ObservableProperty] private bool _redirectKeys;

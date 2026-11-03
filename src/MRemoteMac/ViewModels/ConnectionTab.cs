@@ -39,7 +39,7 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
     private readonly Border _frame;
     private readonly Controls.FileTray _tray = new();
     private readonly Controls.FileDropHint _dropHint = new();
-    private bool _sessionHoldsDrop; // the session's clipboard holds dropped files, not the Mac clipboard
+    private bool _sessionHoldsDrop; // the session's clipboard holds dropped files, not the local clipboard
     private int _generation; // guards late events from a replaced session
 
     [ObservableProperty] private string _title;
@@ -87,8 +87,8 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
         Content = new Panel { Children = { _frame } };
         _idleTimer = new DispatcherTimer(TimeSpan.FromSeconds(15), DispatcherPriority.Background, (_, _) => CheckIdle());
         View.GotFocus += (_, _) => AsyncHelper.Fire(PushLocalClipboardAsync, "Clipboard");
-        // macOS has no clipboard-change notification: poll NSPasteboard.changeCount (an integer read) while connected
-        // and push new local text to the session, so copy on the Mac then paste in the session just works.
+        // Poll the clipboard's change counter (NSPasteboard.changeCount, GetClipboardSequenceNumber: an integer read) while
+        // connected and push new local content to the session, so copy here then paste in the session just works.
         _clipboardTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(500), DispatcherPriority.Background, (_, _) => PollLocalClipboard());
         View.FirstFrame += () => { if (State == TabState.Connected) SetState(TabState.Connected, ""); }; // lifts the overlay
         View.FileDropRefusal = FileDropRefusal;
@@ -240,7 +240,7 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
         _lastLocalClipboard = text;
         await clip.SetTextAsync(text).ConfigureAwait(true);
         _lastPasteboardChange = Native.mr_pasteboard_change_count(); // our own write must not be pushed back
-        Notifications.Instance.Info($"{Info.Name}: Clipboard: {text.Length} characters from the session are on the Mac clipboard");
+        Notifications.Instance.Info($"{Info.Name}: Clipboard: {text.Length} characters from the session are on the local clipboard");
     }
 
     /// <summary>Colors for "Connection Frame Color"; the same hues the status palette uses so they fit both themes.</summary>
@@ -296,7 +296,7 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
     {
         if (Session is not { IsConnected: true } || !Info.GetEffective<bool>(nameof(ConnectionInfo.RedirectClipboard)))
         {
-            AppLog.Trace($"{Info.Name}: Mac clipboard not pushed ({(Session is { IsConnected: true } ? "clipboard redirection is off" : "not connected")})");
+            AppLog.Trace($"{Info.Name}: local clipboard not pushed ({(Session is { IsConnected: true } ? "clipboard redirection is off" : "not connected")})");
             return;
         }
         var clip = TopLevel.GetTopLevel(View)?.Clipboard;
@@ -304,10 +304,9 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
 
         // files take precedence: Finder puts both file URLs and a text form on the pasteboard
         var files = await clip.TryGetFilesAsync().ConfigureAwait(true);
-        // APFS keeps names as typed (often NFD); Windows expects composed characters, and APFS lookups are normalisation-insensitive
-        var paths = files?.Select(f => f.TryGetLocalPath()).Where(p => !string.IsNullOrEmpty(p)).Select(p => p!.Normalize(System.Text.NormalizationForm.FormC)).ToList();
+        var paths = files?.Select(f => f.TryGetLocalPath()).Where(p => !string.IsNullOrEmpty(p)).Select(p => Platform.SessionPath(p!)).ToList();
         var itemCount = files?.Length ?? 0;
-        AppLog.Trace($"{Info.Name}: Mac clipboard holds {itemCount} file item(s), {paths?.Count ?? 0} with a local path{(paths is { Count: > 0 } ? ": " + string.Join(" | ", paths) : "")}");
+        AppLog.Trace($"{Info.Name}: local clipboard holds {itemCount} file item(s), {paths?.Count ?? 0} with a local path{(paths is { Count: > 0 } ? ": " + string.Join(" | ", paths) : "")}");
         if (paths is { Count: > 0 })
         {
             var key = "files:" + string.Join('\n', paths);
@@ -316,16 +315,16 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
             foreach (var p in paths.Where(p => !File.Exists(p) && !Directory.Exists(p)))
                 Notifications.Instance.Warn($"{Info.Name}: Clipboard: {p} does not exist or is not readable");
             var sentFiles = Session.SetClipboardFiles(paths);
-            Notifications.Instance.Info($"{Info.Name}: Clipboard: {paths.Count} file(s) from the Mac {(sentFiles ? "announced to the session; paste there to copy them" : "kept until the channel is ready")}");
+            Notifications.Instance.Info($"{Info.Name}: Clipboard: {paths.Count} file(s) from this computer {(sentFiles ? "announced to the session; paste there to copy them" : "kept until the channel is ready")}");
             return;
         }
 
         var text = await clip.TryGetTextAsync().ConfigureAwait(true);
-        if (string.IsNullOrEmpty(text)) { AppLog.Trace($"{Info.Name}: Mac clipboard has no text or files"); return; }
+        if (string.IsNullOrEmpty(text)) { AppLog.Trace($"{Info.Name}: local clipboard has no text or files"); return; }
         if (text == _lastLocalClipboard) { AppLog.Trace($"{Info.Name}: same text as last time, not announced again"); return; }
         _lastLocalClipboard = text;
         var sent = Session.SetClipboardText(text);
-        Notifications.Instance.Info($"{Info.Name}: Clipboard: {text.Length} characters from the Mac {(sent ? "announced to the session" : "kept until the channel is ready")}");
+        Notifications.Instance.Info($"{Info.Name}: Clipboard: {text.Length} characters from this computer {(sent ? "announced to the session" : "kept until the channel is ready")}");
     }
 
     // ----- files dropped on the session -----
@@ -349,7 +348,7 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
 
     /// <summary>
     /// Copies dropped files the way a user would: they go on the session's clipboard, the window under the drop is
-    /// clicked and Ctrl+V pastes them there, so Explorer or the desktop copies them from this Mac with its own progress.
+    /// clicked and Ctrl+V pastes them there, so Explorer or the desktop copies them from this computer with its own progress.
     /// </summary>
     private async Task DropFilesAsync(IReadOnlyList<string> paths, int x, int y)
     {
@@ -381,7 +380,7 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
             await Task.Delay(20).ConfigureAwait(true);
         }
         View.ClickAndPaste(x, y);
-        Notifications.Instance.Info($"{Info.Name}: Drop: {what} pasted where it was dropped; Windows copies it from this Mac");
+        Notifications.Instance.Info($"{Info.Name}: Drop: {what} pasted where it was dropped; Windows copies it from this computer");
     }
 
     // ----- files from the session -----
@@ -401,7 +400,7 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
         AsyncHelper.Fire(async () =>
         {
             var r = await Dialogs.Dialogs.Message(_owner, "Fetch files from the session?",
-                $"{Info.Name} copied {what}. Fetch them to this Mac now? They are put on the clipboard when done.", Dialogs.Dialogs.MsgButtons.YesNo);
+                $"{Info.Name} copied {what}. Fetch them to this computer now? They are put on the clipboard when done.", Dialogs.Dialogs.MsgButtons.YesNo);
             if (r == Dialogs.Dialogs.MsgResult.Yes) StartFetch(what, totalBytes);
             else Notifications.Instance.Info($"{Info.Name}: Clipboard: not fetching {what}");
         }, "Clipboard files");
@@ -470,7 +469,7 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
         {
             // Finder only honours file promises for drag and drop, so the real URLs must be written now; but the user
             // copied something else meanwhile, and that must not be replaced behind their back
-            Notifications.Instance.Warn($"{Info.Name}: Clipboard: {files} file(s) from the session were received, but the Mac clipboard changed meanwhile; they are in {dest}");
+            Notifications.Instance.Warn($"{Info.Name}: Clipboard: {files} file(s) from the session were received, but the local clipboard changed meanwhile; they are in {dest}");
             return;
         }
         if (top is null || !Directory.Exists(dest)) { Notifications.Instance.Warn($"{Info.Name}: Clipboard: received files, but {dest} is missing"); return; }
@@ -494,13 +493,13 @@ public sealed partial class ConnectionTab : ObservableObject, IAsyncDisposable
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             CrashLog.Write("Clipboard files", ex);
-            Notifications.Instance.Error($"{Info.Name}: Clipboard: the files were received into {dest} but could not be put on the Mac clipboard: {ex.Message}");
+            Notifications.Instance.Error($"{Info.Name}: Clipboard: the files were received into {dest} but could not be put on the local clipboard: {ex.Message}");
             return;
         }
         _lastLocalClipboard = "files:" + string.Join('\n', Directory.EnumerateFileSystemEntries(dest).OrderBy(e => e, StringComparer.Ordinal));
         _lastPasteboardChange = Native.mr_pasteboard_change_count(); // our own write must not be pushed back
-        AppLog.Trace($"{Info.Name}: Mac clipboard now holds the received files (change count {_lastPasteboardChange})");
-        Notifications.Instance.Info($"{Info.Name}: Clipboard: {files} file(s) from the session are on the Mac clipboard ({string.Join(", ", names.Take(3))}{(names.Count > 3 ? ", …" : "")}); paste in Finder to copy them");
+        AppLog.Trace($"{Info.Name}: local clipboard now holds the received files (change count {_lastPasteboardChange})");
+        Notifications.Instance.Info($"{Info.Name}: Clipboard: {files} file(s) from the session are on the local clipboard ({string.Join(", ", names.Take(3))}{(names.Count > 3 ? ", …" : "")}); paste in {Platform.FileManager} to copy them");
     }
 
     public void SendCtrlAltDel() => Session?.SendKeyCombination(ScanCodes.LeftControl, ScanCodes.LeftAlt, ScanCodes.Delete);

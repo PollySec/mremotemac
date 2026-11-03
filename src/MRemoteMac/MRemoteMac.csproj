@@ -5,7 +5,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <RuntimeIdentifier>osx-arm64</RuntimeIdentifier>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' And $([MSBuild]::IsOSPlatform('Windows'))">win-x64</RuntimeIdentifier>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">osx-arm64</RuntimeIdentifier>
     <SelfContained>false</SelfContained>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
@@ -30,7 +31,7 @@
     <ServerGarbageCollection>false</ServerGarbageCollection>
     <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
     <UseSystemResourceKeys>false</UseSystemResourceKeys>
-    <ApplicationIcon />
+    <ApplicationIcon Condition="$(RuntimeIdentifier.StartsWith('win'))">../../packaging/windows/mRemoteMac.ico</ApplicationIcon>
     <NoWarn>$(NoWarn);CA1812;CA1848;CA2007;CA1031;CA1303;CA1707;CA1305;CA1310;CA2213;CA1062</NoWarn>
   </PropertyGroup>
 
@@ -57,5 +58,6 @@
   <!-- Native FreeRDP shim + libs are copied next to the executable -->
   <ItemGroup>
     <None Include="../../native/out/*.dylib" CopyToOutputDirectory="PreserveNewest" Link="%(Filename)%(Extension)" />
+    <None Include="../../native/out/$(RuntimeIdentifier)/*.dll" CopyToOutputDirectory="PreserveNewest" Link="%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

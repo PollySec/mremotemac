@@ -1,10 +1,9 @@
 namespace MRemoteMac.Services;
 
-/// <summary>Writes unhandled exceptions to ~/Library/Logs/mRemoteMac/crash.log so crashes can be diagnosed.</summary>
+/// <summary>Writes unhandled exceptions to crash.log in the log folder so crashes can be diagnosed.</summary>
 public static class CrashLog
 {
-    public static string Path { get; } = System.IO.Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Library", "Logs", "mRemoteMac", "crash.log");
+    public static string Path { get; } = System.IO.Path.Combine(Platform.LogDirectory, "crash.log");
 
     public static void Install()
     {

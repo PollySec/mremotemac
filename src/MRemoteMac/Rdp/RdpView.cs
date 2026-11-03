@@ -7,6 +7,7 @@ using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using MRemoteMac.Services;
 
 namespace MRemoteMac.Rdp;
 
@@ -242,7 +243,8 @@ public sealed class RdpView : Control, IRdpFrameTarget
         {
             using var bmp = new Bitmap(PixelFormat.Bgra8888, AlphaFormat.Unpremul, (IntPtr)data, new PixelSize(p.Width, p.Height), new Vector(96, 96), p.Width * 4);
             // Avalonia passes the hotspot to NSCursor in points, so divide by the Retina scale (AvaloniaUI/Avalonia#6805).
-            return new Cursor(bmp, new PixelPoint((int)Math.Round(p.HotX / scaling), (int)Math.Round(p.HotY / scaling)));
+            if (Platform.IsMac) return new Cursor(bmp, new PixelPoint((int)Math.Round(p.HotX / scaling), (int)Math.Round(p.HotY / scaling)));
+            return new Cursor(bmp, new PixelPoint(p.HotX, p.HotY));
         }
     }
 
@@ -348,7 +350,7 @@ public sealed class RdpView : Control, IRdpFrameTarget
         }
     }
 
-    // ---------- files dropped from the Mac ----------
+    // ---------- files dropped from this computer ----------
 
     private List<string> _dragPaths = [];
 
@@ -363,9 +365,8 @@ public sealed class RdpView : Control, IRdpFrameTarget
 
     private static List<string> LocalPaths(IDataTransfer data)
     {
-        // APFS keeps names as typed (often NFD); Windows expects composed characters, and APFS lookups are normalisation-insensitive
         return data.TryGetFiles()?.Select(f => f.TryGetLocalPath()).Where(p => !string.IsNullOrEmpty(p))
-            .Select(p => p!.Normalize(System.Text.NormalizationForm.FormC)).ToList() ?? [];
+            .Select(p => Platform.SessionPath(p!)).ToList() ?? [];
     }
 
     private void OnDragEnter(object? sender, DragEventArgs e)
@@ -434,6 +435,7 @@ public sealed class RdpView : Control, IRdpFrameTarget
         var pk = e.PhysicalKey;
         if (pk is PhysicalKey.MetaLeft or PhysicalKey.MetaRight)
         {
+            if (Platform.IsWindows) return null; // Windows acts on the Win key itself; the tab menu sends it to the session
             var left = pk == PhysicalKey.MetaLeft;
             return CommandKey switch
             {
@@ -478,6 +480,13 @@ public sealed class RdpView : Control, IRdpFrameTarget
             return;
         }
         base.OnKeyUp(e);
+    }
+
+    /// <summary>A key the window took out of the normal route because it must reach the session.</summary>
+    internal void ForwardKey(KeyEventArgs e, bool down)
+    {
+        if (down) OnKeyDown(e);
+        else OnKeyUp(e);
     }
 
     protected override void OnLostFocus(RoutedEventArgs e)

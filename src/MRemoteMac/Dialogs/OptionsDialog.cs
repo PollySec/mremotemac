@@ -28,8 +28,8 @@ public static class OptionsDialog
         var autoFetch = new NumericUpDown { Value = s.ClipboardFilesAutoFetchMB, Minimum = 0, Maximum = 100_000, Increment = 64, FormatString = "0", Width = 120 };
 
         var body = new StackPanel { Spacing = 8, Width = 460 };
-        body.Children.Add(Heading("Keyboard"));
-        body.Children.Add(new DockPanel { Children = { new TextBlock { Text = "⌘ Command key acts as:", Width = 180, VerticalAlignment = VerticalAlignment.Center, [DockPanel.DockProperty] = Dock.Left }, cmd } });
+        if (!Platform.IsWindows) body.Children.Add(Heading("Keyboard"));
+        if (!Platform.IsWindows) body.Children.Add(new DockPanel { Children = { new TextBlock { Text = "⌘ Command key acts as:", Width = 180, VerticalAlignment = VerticalAlignment.Center, [DockPanel.DockProperty] = Dock.Left }, cmd } });
         body.Children.Add(Heading("Behaviour"));
         body.Children.Add(single);
         body.Children.Add(confirm);

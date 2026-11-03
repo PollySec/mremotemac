@@ -10,7 +10,11 @@
 extern "C" {
 #endif
 
+#ifdef _WIN32
+#define MRRDP_API __declspec(dllexport)
+#else
 #define MRRDP_API __attribute__((visibility("default")))
+#endif
 
 typedef struct mr_session mr_session;
 

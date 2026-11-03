@@ -5,14 +5,15 @@
 <h1 align="center">mRemoteMac</h1>
 
 <p align="center">
-  The mRemoteNG experience, native on Apple Silicon.<br>
-  A tabbed RDP connection manager for macOS that reads and writes mRemoteNG's <code>confCons.xml</code>.
+  The mRemoteNG experience, native on Apple Silicon and on Windows.<br>
+  A tabbed RDP connection manager that reads and writes mRemoteNG's <code>confCons.xml</code>.
 </p>
 
 <p align="center">
   <a href="https://github.com/PollySec/mremotemac/actions/workflows/ci.yml"><img src="https://github.com/PollySec/mremotemac/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/PollySec/mremotemac/releases/latest"><img src="https://img.shields.io/github/v/release/PollySec/mremotemac?display_name=tag" alt="Release"></a>
   <img src="https://img.shields.io/badge/macOS-14%2B%20Apple%20Silicon-black?logo=apple" alt="macOS 14+ Apple Silicon">
+  <img src="https://img.shields.io/badge/Windows-10%2B%20x64%20%7C%20Arm64-0078D4" alt="Windows 10+ x64 and Arm64">
   <img src="https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet" alt=".NET 10">
   <img src="https://img.shields.io/badge/FreeRDP-3.32-blue" alt="FreeRDP 3.32">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--2.0-green" alt="GPL-2.0"></a>
@@ -58,6 +59,14 @@ it and drag **mRemoteMac** to Applications. Requirements: macOS 14 (Sonoma) or n
 
 The app is ad-hoc signed. On first launch macOS will say it cannot verify the developer: right-click the app,
 choose **Open**, and confirm once.
+
+**Windows:** download `mRemoteMac-<version>-windows-x64.msi` (`-arm64` for Windows on Arm) from the same page and run
+it. It needs Windows 10 or newer, is signed, and installs for all users into `Program Files`; no .NET or Visual C++
+runtime is required. Settings and connections live in `%LOCALAPPDATA%\mRemoteMac`, and the database key in Windows
+Credential Manager. Three things differ from the Mac: a file copied in a session arrives on the clipboard when it is
+complete (there is no card to drag from while it is coming in), the Win key and Alt+Tab stay on your PC (the tab menu
+sends them to the session), and Credential Manager does not tie the key to this app, so a master password protects
+against other programs running as you, see [docs/storage.md](docs/storage.md).
 
 On first start mRemoteMac creates an empty connection file in
 `~/Library/Application Support/mRemoteMac/confCons.xml`. Use **File ▸ Import mRemoteNG File…** to bring in an
@@ -106,6 +115,15 @@ dotnet test tests/MRemoteMac.Tests      # file format and crypto tests
 ./packaging/make-app.sh                 # NativeAOT dist/mRemoteMac.app + .zip + .dmg (needs clang from Xcode CLT)
 ```
 
+On Windows, from a machine with .NET 10 and Visual Studio's C++ tools (x64 and Arm64 build the same way):
+
+```powershell
+.\native\build-deps-win.ps1 -Arch x64                     # once: OpenSSL, zlib (vcpkg) and FreeRDP, all static
+.\packaging\windows\make-msi.ps1 -Arch x64 -Step Publish  # NativeAOT app in dist\win-x64\app
+.\packaging\windows\sign.ps1 -Path dist\win-x64\app       # Azure Artifact Signing, optional
+.\packaging\windows\make-msi.ps1 -Arch x64 -Step Package  # dist\mRemoteMac-<version>-windows-x64.msi; sign this too
+```
+
 The app is published with NativeAOT, so everything must stay trim- and AOT-clean: compiled XAML bindings
 (`x:DataType`), source-generated JSON, no `Enum.GetValues(Type)` or `GetType().GetProperty(...)`. Release builds
 run the trim/AOT analyzers with warnings as errors, so a violation fails the build rather than the user.
@@ -122,11 +140,11 @@ release carry that version.
 │ Rdp/RdpView             embedded surface: WriteableBitmap, input, cursors     │
 │ Rdp/RdpSession          managed session, UnmanagedCallersOnly callbacks       │
 │ Rdp/Native              LibraryImport bindings                                │
-├──────────────────────────── native/libmrrdp.dylib (C) ────────────────────────┤
+├────────────────────── native/libmrrdp.dylib / .dll (C) ──────────────────────┤
 │ one flat API over libfreerdp-client: connect thread, gdi framebuffer,         │
 │ input, pointer, cliprdr (text), disp (dynamic resolution), certificate/auth   │
 ├──────────────────────────── FreeRDP 3 + OpenSSL 3 ────────────────────────────┤
-│ built from source for arm64, channels linked statically into the client lib   │
+│ built from source, channels linked statically into the client lib             │
 └───────────────────────────────────────────────────────────────────────────────┘
 ```
 

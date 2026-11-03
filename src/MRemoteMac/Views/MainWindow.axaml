@@ -40,11 +40,11 @@
                 <MenuItem Header="Set Master Password…" Click="OnSetMasterPassword">
                     <MenuItem.Icon><c:Icon Glyph="key-round" /></MenuItem.Icon>
                 </MenuItem>
-                <MenuItem Header="Options…" Click="OnOptions" InputGesture="Cmd+OemComma">
+                <MenuItem x:Name="MiOptions" Header="Options…" Click="OnOptions" InputGesture="Cmd+OemComma">
                     <MenuItem.Icon><c:Icon Glyph="settings" /></MenuItem.Icon>
                 </MenuItem>
                 <Separator />
-                <MenuItem Header="Quit mRemoteMac" Click="OnExit" InputGesture="Cmd+Q">
+                <MenuItem x:Name="MiQuit" Header="Quit mRemoteMac" Click="OnExit" InputGesture="Cmd+Q">
                     <MenuItem.Icon><c:Icon Glyph="log-out" /></MenuItem.Icon>
                 </MenuItem>
             </MenuItem>
@@ -87,7 +87,7 @@
                 <MenuItem Header="Copy Hostname" Click="OnCopyHostname">
                     <MenuItem.Icon><c:Icon Glyph="copy" /></MenuItem.Icon>
                 </MenuItem>
-                <MenuItem Header="Show Connection File in Finder" Click="OnOpenFileFolder">
+                <MenuItem x:Name="MiRevealFile" Header="Show Connection File in Finder" Click="OnOpenFileFolder">
                     <MenuItem.Icon><c:Icon Glyph="folder" /></MenuItem.Icon>
                 </MenuItem>
             </MenuItem>

@@ -4,6 +4,8 @@
   No other company name or e-mail identity may appear anywhere (commits, docs, metadata, test data, screenshots).
 - GitHub home: `PollySec/mremotemac` (public). Bundle id `com.pollysec.mremotemac`.
 - Build: `./native/build-deps.sh` (once), `./native/build.sh`, `dotnet build src/MRemoteMac`; tests `dotnet test tests/MRemoteMac.Tests`.
+- Windows: `native/build-deps-win.ps1 -Arch x64|arm64` (once), `packaging/windows/make-msi.ps1 -Step Publish`, `packaging/windows/sign.ps1`, `-Step Package`, sign the MSI.
+  FreeRDP, OpenSSL and the static CRT all link into one `libmrrdp.dll`. OS differences go through `native/plat.h` and `Services/Platform.cs`; CI builds Windows but never uploads it, because the release MSI must be signed.
 - Storage: `docs/storage.md`. Connections are in an encrypted SQLite database (`Config/SqliteConnectionStore`, key model in
   `Config/VaultHeader` + `Config/ConnectionStores`); XML stays import/export/alternative store. Both formats go through
   `ConnectionsFile.NodeAttributes` / `ReadAttributes` – never serialize a node any other way.

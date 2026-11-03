@@ -1,5 +1,6 @@
 using System.Globalization;
 using MRemoteMac.Models;
+using MRemoteMac.Services;
 
 namespace MRemoteMac.Rdp;
 
@@ -12,7 +13,7 @@ public sealed class RdpClientOptions
     public int ConnectTimeoutMs { get; set; } = 15000;
     public uint? KeyboardLayout { get; set; }
     public int AutoReconnectMaxRetries { get; set; } = 5;
-    public string ConfigPath { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Library", "Application Support", "mRemoteMac", "freerdp");
+    public string ConfigPath { get; set; } = Path.Combine(Platform.DataDirectory, "freerdp");
 }
 
 /// <summary>Translates an mRemoteNG ConnectionInfo into FreeRDP settings on an RdpSession.</summary>
@@ -69,7 +70,7 @@ public static class RdpSettingsBuilder
         s.SetBool("CompressionEnabled", true);
         s.SetUInt32("TcpConnectTimeout", (uint)opt.ConnectTimeoutMs);
 
-        // keyboard layout: macOS input source first (e.g. Swedish 0x041D), then the .NET culture as fallback
+        // keyboard layout: the active input source first (e.g. Swedish 0x041D), then the .NET culture as fallback
         var layout = opt.KeyboardLayout ?? Native.DetectKeyboardLayout();
         if (layout == 0) layout = (uint)CultureInfo.CurrentCulture.KeyboardLayoutId;
         if (layout != 0) s.SetUInt32("KeyboardLayout", layout);
@@ -126,12 +127,17 @@ public static class RdpSettingsBuilder
             case RdpDiskDrives.All:
                 args.Add($"/drive:Home,{Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)}");
                 if (Directory.Exists("/Volumes")) args.Add("/drive:Volumes,/Volumes");
+                if (Platform.IsWindows)
+                    foreach (var drive in DriveInfo.GetDrives().Where(d => d.IsReady && d.DriveType == DriveType.Fixed))
+                        args.Add($"/drive:{drive.Name[..1]},{drive.Name}");
                 break;
             case RdpDiskDrives.Custom:
                 foreach (var p in Eff<string>(nameof(ConnectionInfo.RedirectDiskDrivesCustom)).Split(PathSeparators, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
                 {
                     var path = p.Replace("~", Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
-                    if (Directory.Exists(path)) args.Add($"/drive:{Path.GetFileName(path.TrimEnd('/'))},{path}");
+                    if (!Directory.Exists(path)) continue;
+                    var name = Path.GetFileName(path.TrimEnd('/', '\\'));
+                    args.Add($"/drive:{(name.Length > 0 ? name : path[..1])},{path}"); // D:\ has no folder name
                 }
                 break;
         }

@@ -204,7 +204,7 @@ public sealed unsafe class RdpSession : IDisposable
 
     /// <summary>
     /// Starts downloading the files the session offered into <paramref name="destDir"/>. UI thread: with
-    /// <see cref="FetchStart.StartedWithPromises"/> the Mac pasteboard now holds file promises, so a paste in Finder
+    /// <see cref="FetchStart.StartedWithPromises"/> the Mac pasteboard now holds file promises (never on Windows), so a paste in Finder
     /// completes by itself when the data has arrived.
     /// </summary>
     public FetchStart FetchClipboardFiles(string destDir, out long promiseToken, out List<(bool IsDirectory, string Name)> items)
