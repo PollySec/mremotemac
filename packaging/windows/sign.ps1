@@ -29,10 +29,13 @@ if (-not $signtool) { throw 'signtool from the Windows SDK was not found' }
 
 if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { $env:DOTNET_ROOT_X64 = "$env:ProgramFiles\dotnet\x64" } # or the x64 signtool aborts loading the library
 
-$files = foreach ($item in $Path) {
-    if (Test-Path $item -PathType Container) { Get-ChildItem $item -File | Where-Object Extension -In '.exe', '.dll' | ForEach-Object FullName }
+# a library its vendor already signed keeps that signature
+$files = @(foreach ($item in $Path) {
+    if (Test-Path $item -PathType Container) {
+        Get-ChildItem $item -File | Where-Object { $_.Extension -in '.exe', '.dll' -and (Get-AuthenticodeSignature $_.FullName).Status -ne 'Valid' } | ForEach-Object FullName
+    }
     else { (Resolve-Path $item).Path }
-}
+})
 if (-not $files) { throw 'nothing to sign' }
 
 $metadata = [ordered]@{ Endpoint = $Endpoint; CodeSigningAccountName = $Account; CertificateProfileName = $CertificateProfile }
@@ -51,4 +54,4 @@ foreach ($file in $files) {
     if ($LASTEXITCODE) { throw "the signature of $file does not verify" }
 }
 $signer = (Get-AuthenticodeSignature $files[0]).SignerCertificate.Subject
-Write-Host "signed $(@($files).Count) file(s), signer: $signer"
+Write-Host "signed $($files.Count) file(s), signer: $signer"
