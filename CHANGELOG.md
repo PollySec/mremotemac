@@ -3,7 +3,7 @@
 All notable changes to mRemoteMac are documented here. The format follows [Keep a Changelog](https://keepachangelog.com)
 and versions follow [Semantic Versioning](https://semver.org) via git tags (MinVer).
 
-## [Unreleased]
+## [1.5.0] – 2026-11-03
 
 ### Added
 - **Windows.** mRemoteMac now also runs on Windows 10 and newer, x64 and Arm64, as a signed MSI that needs no .NET or
