@@ -43,6 +43,7 @@ public sealed partial class MainWindow : Window
     private List<ConnectionInfo> _searchMatches = [];
     private int _searchIndex = -1;
     private bool _closing;
+    private string? _unseenError; // shown in the collapsed panel's title until the panel is opened or cleared
     private bool _fullscreen;
     private WindowState _stateBeforeFullscreen;
 
@@ -93,8 +94,8 @@ public sealed partial class MainWindow : Window
         };
         Notifications.Instance.MessageAdded += m =>
         {
+            if (m.Class == MessageClass.Error && !NotificationsBody.IsVisible) _unseenError = m.Text;
             UpdateNotificationsTitle();
-            if (m.Class == MessageClass.Error && !NotificationsBody.IsVisible) NotificationsTitle.Text += "   ·   " + m.Text;
         };
 
         // Sessions ▸ Jump to session 1..9 (Cmd+1..9), like mRemoteNG
@@ -1156,13 +1157,16 @@ public sealed partial class MainWindow : Window
         NotificationsBody.IsVisible = visible;
         MenuViewNotifications.IsChecked = visible;
         NotificationsChevron.Glyph = visible ? "chevron-down" : "chevron-right";
+        if (visible) _unseenError = null;
         UpdateNotificationsTitle();
     }
 
     private void UpdateNotificationsTitle()
     {
         var n = Notifications.Instance.Messages.Count;
-        NotificationsTitle.Text = n == 0 ? "NOTIFICATIONS" : $"NOTIFICATIONS ({n})";
+        if (n == 0) _unseenError = null;
+        NotificationsTitle.Text = (n == 0 ? "NOTIFICATIONS" : $"NOTIFICATIONS ({n})")
+                                  + (_unseenError is { } error && !NotificationsBody.IsVisible ? "   ·   " + error : "");
     }
 
     private void OnToggleQuickConnect(object? sender, RoutedEventArgs e)

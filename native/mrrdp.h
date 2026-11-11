@@ -79,6 +79,10 @@ typedef struct {
 
 MRRDP_API const char* mr_version(void);
 
+/* Known-answer test of the hashes and ciphers NTLM (and so NLA) needs. 1 = all present; message (UTF-8, cap bytes)
+ * names what is missing. Run before any session exists to catch a build that depends on its build machine. */
+MRRDP_API int32_t mr_selftest(char* message, int32_t cap);
+
 /* Windows keyboard layout id (e.g. 0x041D Swedish) for the current macOS input source, 0 if unknown. */
 MRRDP_API uint32_t mr_detect_keyboard_layout(void);
 

@@ -3,6 +3,28 @@
 All notable changes to mRemoteMac are documented here. The format follows [Keep a Changelog](https://keepachangelog.com)
 and versions follow [Semantic Versioning](https://semver.org) via git tags (MinVer).
 
+## [Unreleased]
+
+### Fixed
+- **macOS: logons to servers that require NLA failed** with "The connection transport layer failed.
+  (ERRCONNECT_CONNECT_TRANSPORT_FAILED)" right after the credentials, on every Mac except the one that built the app –
+  in practice every Windows server with default settings. NTLM needs MD4 and RC4, and FreeRDP took them from
+  OpenSSL's legacy provider, a separate file that OpenSSL loads from a path on the build machine. The 1.5.0 download
+  and the replaced 1.4.0 download are both affected. FreeRDP now uses its own MD4, MD5 and RC4, as the Windows build
+  already did, and OpenSSL is built with the legacy provider compiled in, so nothing is loaded from disk.
+- FreeRDP's own warnings and errors now reach the log file, so a failure inside FreeRDP no longer shows up as a bare
+  error code. At start-up the app checks that the hashes and ciphers NLA needs are there and says so in the
+  notifications panel if they are not.
+- An error shown in the title of the collapsed notifications panel disappeared as soon as any other message arrived;
+  it now stays there until the panel is opened or cleared.
+
+### Changed
+- Every release is now tested with an NLA logon before it is packaged: `native/nla-test.sh` logs on to FreeRDP's
+  sample server, which now requires NLA like a Windows host (`CLIPSRV_SAM`), with the right and with a wrong password,
+  with the libraries from the app bundle running as if on another Mac. CI runs it on the native libraries and again on
+  the finished app; `native/build-deps.sh` builds the test server and rebuilds a local deps directory whenever the
+  script changes, so local builds and CI use the same options.
+
 ## [1.5.0] – 2026-11-03
 
 ### Added

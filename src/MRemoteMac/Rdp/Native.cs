@@ -31,6 +31,7 @@ internal static unsafe partial class Native
     }
 
     [LibraryImport(Lib)] public static partial IntPtr mr_version();
+    [LibraryImport(Lib)] public static partial int mr_selftest(byte* message, int cap);
     [LibraryImport(Lib)] public static partial uint mr_detect_keyboard_layout();
     [LibraryImport(Lib)] public static partial IntPtr mr_session_create(ref Callbacks callbacks);
     [LibraryImport(Lib)] public static partial void mr_session_destroy(IntPtr s);
@@ -76,6 +77,19 @@ internal static unsafe partial class Native
     {
         try { return Marshal.PtrToStringUTF8(mr_version()) ?? "?"; }
         catch (DllNotFoundException) { return "libmrrdp not found"; }
+    }
+
+    /// <summary>
+    /// Known-answer test of the hashes and ciphers NTLM, and so every NLA logon, needs (mr_selftest). Null when all are
+    /// there; otherwise what is missing. A missing libmrrdp is reported when a session starts, not here.
+    /// </summary>
+    public static string? CryptoProblem()
+    {
+        const int cap = 256;
+        var buffer = stackalloc byte[cap];
+        try { return mr_selftest(buffer, cap) == 1 ? null : Marshal.PtrToStringUTF8((IntPtr)buffer) ?? "self-test failed"; }
+        catch (DllNotFoundException) { return null; }
+        catch (EntryPointNotFoundException) { return "libmrrdp is older than the app (no mr_selftest)"; }
     }
 
     public static int ParseArgs(IntPtr s, IReadOnlyList<string> args)

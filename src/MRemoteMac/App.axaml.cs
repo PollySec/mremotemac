@@ -22,6 +22,9 @@ public sealed partial class App : Application
             desktop.MainWindow = main;
             desktop.ShutdownMode = ShutdownMode.OnMainWindowClose;
             NativeMenu.SetMenu(this, BuildAppMenu(main));
+            // without these every NLA logon fails with a misleading transport error (1.5.0), so say it up front
+            if (Rdp.Native.CryptoProblem() is { } problem)
+                Notifications.Instance.Error($"This build of mRemoteMac cannot log on to servers that require NLA ({problem}). Install the latest version.");
         }
         base.OnFrameworkInitializationCompleted();
     }

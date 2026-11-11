@@ -58,6 +58,11 @@ else
   codesign --force --deep --sign - $APP
 fi
 
+# The libraries in the bundle must log on with NLA by themselves. 1.5.0 needed a file from the build machine for that
+# and failed on every other Mac; the test runs them as if on another Mac and stops the release if they cannot.
+echo "==> NLA logon test (bundle, as on another Mac)"
+$ROOT/native/nla-test.sh $APP/Contents/MacOS
+
 echo "==> archives"
 cd $DIST
 rm -f mRemoteMac-$VERSION-macos-arm64.zip mRemoteMac-$VERSION-macos-arm64.dmg

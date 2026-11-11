@@ -4,6 +4,9 @@
 #   CLIPSRV_OFFER=<file|dir> CLIPSRV_TEXT=<text> CLIPSRV_PASTE=1 CLIPSRV_DELAY_MS=150 CLIPSRV_MAX_REQUEST=1048576 CLIPSRV_SAVE=<dir> \
 #     tools/clipsrv/out/clipsrv --port=3390 --cert=server.crt --key=server.key
 # (see the header of sf_clip.c for the switches). Must be started from the sample's directory so it finds its icon.
+# CLIPSRV_SAM=<file> makes it require NLA like a Windows host, checking passwords against that SAM file
+# ("user::<LM hash or empty>:<NT hash>:::"); TLS-only and RDP-security clients are refused. native/nla-test.sh uses it.
+# CLIPSRV_BIND=127.0.0.1 listens on that address only (default: all interfaces).
 set -e
 HERE=${0:A:h}
 DEPS=${DEPS:-${HERE:h:h}/../mRemoteMac-deps/freerdp}
@@ -32,6 +35,14 @@ patch(f'{out}/sfreerdp.c',[
  ('#include "sf_encomsp.h"','#include "sf_encomsp.h"\n#include "sf_clip.h"\n#include <freerdp/channels/cliprdr.h>'),
  ("\t\tencomsp_server_context_free(context->encomsp);","\t\tencomsp_server_context_free(context->encomsp);\n\t\tsf_peer_clip_uninit(context);"),
  ("\t/* Dynamic Virtual Channels */","\tif (WTSVirtualChannelManagerIsChannelJoined(context->vcm, CLIPRDR_SVC_CHANNEL_NAME))\n\t{\n\t\tif (!sf_peer_clip_init(context))\n\t\t\treturn FALSE;\n\t}\n\n\t/* Dynamic Virtual Channels */"),
+ ("\tif (!freerdp_settings_set_bool(settings, FreeRDP_NlaSecurity, FALSE))\n\t\tgoto fail;",
+  "\tconst char* sam = getenv(\"CLIPSRV_SAM\");\n"
+  "\tif (!freerdp_settings_set_bool(settings, FreeRDP_NlaSecurity, sam != NULL))\n\t\tgoto fail;\n"
+  "\tif (sam && (!freerdp_settings_set_string(settings, FreeRDP_NtlmSamFile, sam) ||\n"
+  "\t            !freerdp_settings_set_bool(settings, FreeRDP_TlsSecurity, FALSE) ||\n"
+  "\t            !freerdp_settings_set_bool(settings, FreeRDP_RdpSecurity, FALSE)))\n\t\tgoto fail;"),
+ ("\t\tstarted = instance->Open(instance, nullptr, (UINT16)port);",
+  "\t\tstarted = instance->Open(instance, getenv(\"CLIPSRV_BIND\"), (UINT16)port);"),
 ])
 PY
 cd $OUT && clang -std=gnu23 -O2 -arch arm64 -mmacosx-version-min=14.0 -Wno-c++-keyword -DWINPR_DEFINE_ATTR_NODISCARD \

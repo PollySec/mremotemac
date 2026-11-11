@@ -36,6 +36,10 @@ jobs:
       - name: Build native shim
         run: ./native/build.sh
 
+      # make-app.sh repeats this on the finished bundle; here it fails fast, before the .NET build
+      - name: NLA logon test (native libraries, as on another Mac)
+        run: ./native/nla-test.sh
+
       - name: Restore
         run: dotnet restore mRemoteMac.slnx -p:Configuration=Release
 
@@ -112,7 +116,10 @@ jobs:
           ./packaging/windows/make-msi.ps1 -Arch ${{ matrix.arch }} -Step Publish
           ./packaging/windows/make-msi.ps1 -Arch ${{ matrix.arch }} -Step Package
 
+      # the app folder lets a release be signed and packaged (sign.ps1, make-msi.ps1 -Step Package) without a local build
       - uses: actions/upload-artifact@v4
         with:
           name: mRemoteMac-windows-${{ matrix.arch }}-unsigned
-          path: dist/*.msi
+          path: |
+            dist/*.msi
+            dist/win-${{ matrix.arch }}/app

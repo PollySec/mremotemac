@@ -30,6 +30,8 @@
 #include <winpr/clipboard.h>
 #include <winpr/shell.h>
 #include <winpr/wlog.h>
+#include <winpr/crypto.h>
+#include <winpr/ssl.h>
 #include "plat.h"
 
 #define MR_CLIP_WINDOW 4 /* File Contents Requests kept in flight while downloading */
@@ -117,6 +119,65 @@ static mr_session* S(rdpContext* ctx)
 const char* mr_version(void)
 {
 	return freerdp_get_version_string();
+}
+
+static int mr_hex_equals(const BYTE* got, size_t n, const char* hex)
+{
+	char buf[2 * 32 + 1] = { 0 };
+	for (size_t i = 0; i < n && i < 32; i++)
+		(void)snprintf(&buf[2 * i], 3, "%02x", got[i]);
+	return strcmp(buf, hex) == 0;
+}
+
+static void mr_append(char* buf, size_t cap, const char* text)
+{
+	const size_t len = strnlen(buf, cap);
+	if (len < cap)
+		(void)snprintf(&buf[len], cap - len, "%s%s", len ? ", " : "", text);
+}
+
+/* NTLM, and with it every NLA logon, needs MD4, MD5, HMAC-MD5 and RC4. Behind OpenSSL 3 these can depend on a provider
+ * that is loaded from disk, so a build can log on from the machine that built it and from no other (1.5.0 did exactly
+ * that). Known-answer checks, run at start-up by the app and by native/nla-test.sh before a release is packaged. */
+int32_t mr_selftest(char* message, int32_t cap)
+{
+	char failed[96] = { 0 };
+	BYTE out[16] = { 0 };
+	(void)winpr_InitializeSSL(WINPR_SSL_INIT_DEFAULT);
+
+	/* NT hash of "password" (MD4 over UTF-16LE), the first step of NTOWFv2 */
+	static const BYTE pw[] = { 'p', 0, 'a', 0, 's', 0, 's', 0, 'w', 0, 'o', 0, 'r', 0, 'd', 0 };
+	if (!winpr_Digest(WINPR_MD_MD4, pw, sizeof(pw), out, sizeof(out)) ||
+	    !mr_hex_equals(out, 16, "8846f7eaee8fb117ad06bdd830b7586c"))
+		mr_append(failed, sizeof(failed), "MD4");
+
+	if (!winpr_Digest(WINPR_MD_MD5, "abc", 3, out, sizeof(out)) ||
+	    !mr_hex_equals(out, 16, "900150983cd24fb0d6963f7d28e17f72"))
+		mr_append(failed, sizeof(failed), "MD5");
+
+	static const char fox[] = "The quick brown fox jumps over the lazy dog";
+	WINPR_HMAC_CTX* hmac = winpr_HMAC_New();
+	if (!hmac || !winpr_HMAC_Init(hmac, WINPR_MD_MD5, "key", 3) ||
+	    !winpr_HMAC_Update(hmac, fox, sizeof(fox) - 1) || !winpr_HMAC_Final(hmac, out, sizeof(out)) ||
+	    !mr_hex_equals(out, 16, "80070713463e7749b90c2dc24911e275"))
+		mr_append(failed, sizeof(failed), "HMAC-MD5");
+	if (hmac)
+		winpr_HMAC_Free(hmac);
+
+	WINPR_RC4_CTX* rc4 = winpr_RC4_New("Key", 3);
+	if (!rc4 || !winpr_RC4_Update(rc4, 9, "Plaintext", out) || !mr_hex_equals(out, 9, "bbf316e8d940af0ad3"))
+		mr_append(failed, sizeof(failed), "RC4");
+	if (rc4)
+		winpr_RC4_Free(rc4);
+
+	if (message && cap > 0)
+	{
+		if (failed[0])
+			(void)snprintf(message, (size_t)cap, "%s not available", failed);
+		else
+			(void)snprintf(message, (size_t)cap, "MD4, MD5, HMAC-MD5 and RC4 ok");
+	}
+	return failed[0] ? 0 : 1;
 }
 
 static uint64_t mr_now_ms(void)
@@ -333,6 +394,24 @@ static BOOL mr_wlog_message(const wLogMessage* msg)
 	return TRUE;
 }
 
+/* Every other FreeRDP logger (warnings and errors; WLOG_LEVEL=INFO/DEBUG/TRACE for more) goes to the log file only. A logon
+ * that fails inside FreeRDP reaches the app as a bare ERRCONNECT_* code – 1.5.0's NLA failure read
+ * ERRCONNECT_CONNECT_TRANSPORT_FAILED – and the actual reason is only in these lines. */
+static BOOL mr_wlog_root_message(const wLogMessage* msg)
+{
+	static const char* const levels[] = { "trace", "debug", "info", "warning", "error", "fatal" };
+	if (!msg || !msg->TextString)
+		return TRUE;
+	const char* level = msg->Level < sizeof(levels) / sizeof(levels[0]) ? levels[msg->Level] : "?";
+	pthread_mutex_lock(&g_sessions_lock);
+	for (int i = 0; i < MR_MAX_SESSIONS; i++)
+		if (g_sessions[i])
+			mr_tracef(g_sessions[i], "FreeRDP %s in %s: %s", level, msg->FunctionName ? msg->FunctionName : "?",
+			          msg->TextString);
+	pthread_mutex_unlock(&g_sessions_lock);
+	return TRUE;
+}
+
 static void mr_register_session(mr_session* s)
 {
 	static const char* const loggers[] = { "com.freerdp.client.common.cliprdr.file", "com.freerdp.channels.cliprdr.client",
@@ -360,6 +439,19 @@ static void mr_register_session(mr_session* s)
 			/* debug lines go to the log file only, warnings also to the panel; the channel logger prints several
 			 * lines per PDU at DEBUG, which is noise at hundreds of PDUs per file, so it stays at INFO */
 			(void)WLog_SetLogLevel(l, i == 0 ? WLOG_DEBUG : i == 1 ? WLOG_INFO : WLOG_WARN);
+		}
+		/* loggers without an appender of their own (all but the clipboard ones above) use the root's */
+		wLog* root = WLog_GetRoot();
+		if (root && WLog_SetLogAppenderType(root, WLOG_APPENDER_CALLBACK))
+		{
+			wLogAppender* a = WLog_GetLogAppender(root);
+			wLogCallbacks cb = { 0 };
+			cb.message = mr_wlog_root_message;
+			if (a)
+				(void)WLog_ConfigureAppender(a, "callbacks", &cb);
+			/* FreeRDP's default is INFO, a dozen lines per connect; WLOG_LEVEL=DEBUG etc. still overrides */
+			if (!getenv("WLOG_LEVEL"))
+				(void)WLog_SetLogLevel(root, WLOG_WARN);
 		}
 	}
 	pthread_mutex_unlock(&g_sessions_lock);
