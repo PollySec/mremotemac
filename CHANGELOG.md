@@ -3,7 +3,7 @@
 All notable changes to mRemoteMac are documented here. The format follows [Keep a Changelog](https://keepachangelog.com)
 and versions follow [Semantic Versioning](https://semver.org) via git tags (MinVer).
 
-## [Unreleased]
+## [1.5.1] – 2026-11-11
 
 ### Fixed
 - **macOS: logons to servers that require NLA failed** with "The connection transport layer failed.
