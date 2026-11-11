@@ -16,16 +16,29 @@ $ProgressPreference = 'SilentlyContinue'
 $Root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $D = if ($env:DEPS_ROOT) { $env:DEPS_ROOT } else { Join-Path (Split-Path $Root -Parent) 'mRemoteMac-deps-win' }
 $ClientVersion = '1.0.146'
+$BuildToolsVersion = '10.0.28000.2705'
 
-$client = "$D\artifact-signing-$ClientVersion"
-if (-not (Test-Path "$client\bin\x64\Azure.CodeSigning.Dlib.dll")) {
-    New-Item -ItemType Directory -Force $D | Out-Null
-    Invoke-WebRequest "https://api.nuget.org/v3-flatcontainer/microsoft.artifactsigning.client/$ClientVersion/microsoft.artifactsigning.client.$ClientVersion.nupkg" -OutFile "$client.zip"
-    Expand-Archive -Force "$client.zip" $client
-    Remove-Item "$client.zip"
+# a NuGet package, unpacked once into the deps folder
+function Get-Package([string]$Id, [string]$Version, [string]$Folder) {
+    $dir = "$D\$Folder-$Version"
+    if (-not (Test-Path "$dir\.complete")) {
+        New-Item -ItemType Directory -Force $D | Out-Null
+        $lower = $Id.ToLowerInvariant()
+        Invoke-WebRequest "https://api.nuget.org/v3-flatcontainer/$lower/$Version/$lower.$Version.nupkg" -OutFile "$dir.zip"
+        Expand-Archive -Force "$dir.zip" $dir
+        Remove-Item "$dir.zip"
+        New-Item -ItemType File "$dir\.complete" | Out-Null
+    }
+    $dir
 }
-$signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName | Select-Object -Last 1 -ExpandProperty FullName
-if (-not $signtool) { throw 'signtool from the Windows SDK was not found' }
+$client = Get-Package Microsoft.ArtifactSigning.Client $ClientVersion artifact-signing
+# signtool from the Windows SDK, or from Microsoft's NuGet package of the SDK tools on a machine without the SDK
+$signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue | Sort-Object FullName | Select-Object -Last 1 -ExpandProperty FullName
+if (-not $signtool) {
+    $tools = Get-Package Microsoft.Windows.SDK.BuildTools $BuildToolsVersion sdk-buildtools
+    $signtool = Get-ChildItem "$tools\bin\*\x64\signtool.exe" | Sort-Object FullName | Select-Object -Last 1 -ExpandProperty FullName
+}
+if (-not $signtool) { throw 'signtool was found neither in the Windows SDK nor in the SDK build tools package' }
 
 if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { $env:DOTNET_ROOT_X64 = "$env:ProgramFiles\dotnet\x64" } # or the x64 signtool aborts loading the library
 

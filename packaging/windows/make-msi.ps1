@@ -1,5 +1,5 @@
 # Builds mRemoteMac for Windows in two steps, because the files inside an MSI must be signed before they go in:
-#   make-msi.ps1 -Arch x64 -Step Publish   NativeAOT build into <Dist>\win-x64\app; sign those files now (sign.sh)
+#   make-msi.ps1 -Arch x64 -Step Publish   NativeAOT build into <Dist>\win-x64\app; sign those files now (sign.ps1)
 #   make-msi.ps1 -Arch x64 -Step Package   wraps the app folder into <Dist>\mRemoteMac-<version>-windows-x64.msi; sign that too
 # Needs native\build-deps-win.ps1 (once) and .NET 10. -Version overrides the version MinVer reads from the git tag.
 param(
